@@ -1,0 +1,5 @@
+*.o
+latea
+latea_ui.*
+*.conf
+*.cfg
