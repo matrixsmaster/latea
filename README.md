@@ -159,3 +159,13 @@ The slightly retro FLTK look is part of the charm: simple widgets, simple menus,
 Oh, and building from source doesn't require you to pull in absurd amount of dependencies. Only FLTK. Done.
 
 Latea edits text files. That's it! It has optional autocomplete because autocomplete is useful. Everything else has to justify its existence before being allowed through the door.
+
+---
+
+## Credits
+
+Created by **Dmitry 'sciloaf' Solovyev** aka **MatrixS_Master**, in 2026.
+
+## License
+
+MIT
