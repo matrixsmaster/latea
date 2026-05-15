@@ -1,5 +1,4 @@
-#ifndef LATEA_HISTORY_H
-#define LATEA_HISTORY_H
+#pragma once
 
 #include <vector>
 #include <string>
@@ -23,10 +22,6 @@ struct edit_history
 
     void clear();
     void record(const edit_action &action);
-    bool undo(Fl_Text_Buffer *textbuf, int &cursor_pos);
-    bool redo(Fl_Text_Buffer *textbuf, int &cursor_pos);
-    bool can_undo() const;
-    bool can_redo() const;
+    bool undo(Fl_Text_Buffer* textbuf, int &cursor_pos);
+    bool redo(Fl_Text_Buffer* textbuf, int &cursor_pos);
 };
-
-#endif

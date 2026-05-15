@@ -10,8 +10,6 @@
 #include "common.h"
 #include "llama_client.h"
 
-static const size_t HTTP_READ_BUFFER_SIZE = 4096;
-
 bool llama_client::request_completion(const ai_request &req, ai_result &res)
 {
     std::string body;
@@ -57,8 +55,10 @@ std::string llama_client::build_completion_json(const ai_request &req) const
     out << "{";
     out << "\"prompt\":\"" << json_escape(prompt) << "\",";
     out << "\"n_predict\":" << req.max_chars << ",";
+    out << "\"n_ctx\":" << req.context_length << ",";
     out << "\"temperature\":" << req.temperature << ",";
     out << "\"top_p\":" << req.top_p << ",";
+    out << "\"top_k\":" << req.top_k << ",";
     out << "\"cache_prompt\":" << (req.cache_prompt ? "true" : "false") << ",";
     out << "\"id_slot\":" << req.slot_id;
     out << "}";
@@ -74,15 +74,17 @@ std::string llama_client::build_infill_json(const ai_request &req) const
     out << "\"input_prefix\":\"" << json_escape(prefix) << "\",";
     out << "\"input_suffix\":\"" << json_escape(req.suffix) << "\",";
     out << "\"n_predict\":" << req.max_chars << ",";
+    out << "\"n_ctx\":" << req.context_length << ",";
     out << "\"temperature\":" << req.temperature << ",";
     out << "\"top_p\":" << req.top_p << ",";
+    out << "\"top_k\":" << req.top_k << ",";
     out << "\"cache_prompt\":" << (req.cache_prompt ? "true" : "false") << ",";
     out << "\"id_slot\":" << req.slot_id;
     out << "}";
     return out.str();
 }
 
-std::string llama_client::parse_text_field(const std::string &json, const char *key) const
+std::string llama_client::parse_text_field(const std::string &json, const char* key) const
 {
     std::string needle = std::string("\"") + key + "\"";
     size_t pos = json.find(needle);
@@ -110,9 +112,7 @@ std::string llama_client::parse_text_field(const std::string &json, const char *
     return json_unescape(value);
 }
 
-bool llama_client::post_json(const std::string &host, int port, const std::string &path,
-    const std::string &body, int timeout_ms, std::string &response_body,
-    std::string &error)
+bool llama_client::post_json(const std::string &host, int port, const std::string &path, const std::string &body, int timeout_ms, std::string &response_body, std::string &error)
 {
     char port_buf[32];
     snprintf(port_buf, sizeof(port_buf), "%d", port);
@@ -122,14 +122,14 @@ bool llama_client::post_json(const std::string &host, int port, const std::strin
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    struct addrinfo *res = 0;
+    struct addrinfo* res = 0;
     if (getaddrinfo(host.c_str(), port_buf, &hints, &res) != 0) {
         error = "cannot resolve AI host";
         return false;
     }
 
     int fd = -1;
-    for (struct addrinfo *it = res; it; it = it->ai_next) {
+    for (struct addrinfo* it = res; it; it = it->ai_next) {
         fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
         if (fd < 0) continue;
 

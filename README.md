@@ -1,20 +1,22 @@
 # Latea
 
-Latea is the GUI text editor without any features. Yes, no features!
+**Latea** is the GUI text editor without any features. Yes, no features!
 
 Well... Only one feature :)
 
-Latea is a small FLTK text editor with a deliberately nonexistent feature set, and only one suspiciously useful trick: inline autocomplete.
+**Latea** is a small FLTK text editor with a deliberately nonexistent feature set, and only one suspiciously useful trick: inline autocomplete.
 
 It is meant to be a no-fuss editor for people who want to edit text without being recruited into an ecosystem. No plugins. No cloud sync. No account. No telemetry. No update circus. No extension marketplace. No startup screen asking what kind of productivity journey you are on.
 
 Just an editor, editing text. And you don't even need to memorize 16384 hotkey combos. A truly revolutionary concept for 21st century!
 
-Latea is designed for Linux and *BSD systems, builds with a simple `Makefile`, and avoids extra dependencies beyond FLTK and the C++ standard library. It uses FLTK 1.3, so it looks a little retro, but that is intentional. The point is not to chase whatever the current desktop fashion is this week, but to feel simple, readable, fast, and comfortably old-school.
+**Latea** is designed for Linux and *BSD systems, builds with a simple `Makefile`, and avoids extra dependencies beyond FLTK and the C++ standard library. It uses FLTK 1.3, so it looks a little retro, but that is intentional. The point is not to chase whatever the current desktop fashion is this week, but to feel simple, readable, fast, and comfortably old-school.
+
+A few minor updates have been done since the last release, though. Autocomplete is now a proper multi-backend subsystem, including old-fashioned word suggestions, a local server connector, and an embedded AI inference engine for people who enjoy keeping their tiny editor local, offline, and faintly dangerous. Yes, you don't even need a single external process to have AI completions now.
 
 ## What Latea is
 
-Latea is a plain text editor for writing, programming, note-taking, and others everyday editing jobs.
+Latea is a plain text editor for writing, programming, note-taking, and other everyday editing jobs.
 
 It does not try to be a full IDE. It does not try to be a document processor. It does not want to become a plugin host, project manager, terminal emulator, browser tab, kitchen appliance, team collaboration portal, or lifestyle coach.
 
@@ -22,19 +24,23 @@ It opens text files, lets you edit them, helps you find and replace things, reme
 
 That last part is the feature. The only feature.
 
+Admittedly, the only feature now owns several hats and a small local inference engine. But it is still one feature.
+
 ## What it does
 
 - Open, edit, and save plain text files
 - Keep custom undo and redo history outside FLTK's limited built-in undo support
 - Find, replace, and replace all
-- Show inline autocomplete suggestions in four modes:
+- Show inline autocomplete suggestions in several modes:
   - disabled
   - dictionary file
   - current file
   - AI connector
+  - embedded AI engine
 - Accept suggestions inline while staying in the normal editing flow
-- Store preferences in `~/.latea/latea.cfg`
-- Customize font, colors, word wrap, and line numbers
+- Run AI autocomplete through either a local `llama.cpp`-style server or the in-process embedded inference engine
+- Has prompt caching for embedded inference where possible, because recomputing the universe on every keystroke is impolite
+- Customize font, colors, word wrap, line numbers, and other editor appearance settings
 - Stay small, local, and boring in the best possible way
 
 ## Autocomplete
@@ -49,6 +55,7 @@ For programmers, autocomplete can help with:
 - words from a dictionary or keyword list
 - source code continuation from a local AI model
 - short inline completions without breaking the editing flow
+- switching between simple lexical completion and actual model-backed continuation without joining a productivity cult
 
 For writers, it can act more like a quiet co-pilot:
 
@@ -61,15 +68,17 @@ And for people who both write and program, Latea may be especially comfortable: 
 
 ## Autocomplete modes
 
-Latea currently supports four autocomplete modes.
+Latea currently supports multiple autocomplete modes.
 
 ### Disabled
 
 No autocomplete. Just plain editing.
 
+This is the mode for purists, minimalists, benchmark writers, and people who looked at autocomplete and said: "not today, ghost text."
+
 ### Dictionary file
 
-Suggestions are taken from a word list. This is useful for keywords, domain-specific terms, names, or any vocabulary you want Latea to know about.
+Suggestions are taken from a user-supplied word list. This is useful for keywords, domain-specific terms, names, or any vocabulary you want Latea to know about.
 
 ### Current file
 
@@ -77,9 +86,23 @@ Suggestions are based on words already present in the open document. This is use
 
 ### AI connector
 
-Suggestions come from a local `llama.cpp` server. This allows Latea to generate longer completions, including prose continuation or source code.
+Suggestions come from a local `llama.cpp`-style server. This allows Latea to generate longer completions, including prose continuation or source code.
 
-The AI connector is local-first. Latea talks directly to a local server over HTTP using simple bespoke socket code. No external HTTP library or JSON library is required.
+The AI connector is local-first. Latea talks directly to a local server over HTTP using simple bespoke socket code. No external HTTP library or JSON library is required, because apparently an editor can still open a socket without summoning a dependency hydra.
+
+### Embedded AI engine
+
+Suggestions come from an embedded local inference engine built into Latea.
+
+This mode uses an in-tree AI engine based on [LiGGUF](https://github.com/matrixsmaster/ligguf), allowing Latea to generate completions from a local model file without requiring a separate `llama.cpp` server to be running in the background.
+
+This is useful when you want:
+
+- fewer moving parts
+- no server process to babysit
+- a tiny editor with a tiny local model whispering at the cursor
+
+The embedded path includes prompt caching support, so repeated completion requests can reuse context where possible. That matters because autocomplete should feel snappy and helpful.
 
 ## Keyboard and editing flow
 
@@ -107,36 +130,17 @@ You're welcome.
 
 ## Run
 
-Start the editor with:
+Start the editor with `./latea`
 
-```
-./latea
-```
-
-Or open a file immediately:
-
-```
-./latea path/to/file.txt
-```
+Or open a file immediately: `./latea path/to/file.txt`
 
 ## AI autocomplete
 
-The AI mode talks directly to a local `llama.cpp` server over HTTP.
+All autocomplete modes are local and offline. Latea is not trying to upload your code, notes, unfinished novel, grocery list, or alarming collection of TODO comments to a mysterious cloud endpoint.
 
-Preferences let you configure:
+Use your own `llama.cpp` server if you want fancy GPU acceleration and big models.
 
-- host and port
-- completion vs. preferred infill endpoint mode
-- prompt prefix and suffix window sizes
-- debounce delay and request timeout
-- system prompt
-- cache reuse flag
-- slot id
-- maximum suggestion length
-
-The connector tries to use infill mode when requested and when a suffix is available. Otherwise, it falls back to normal completion.
-
-This makes it suitable for both code and prose: it can continue a line of source code, fill in part of a sentence, or suggest the next chunk of text based on the surrounding context.
+Use the built-in AI engine with a small model, and forget about headaches.
 
 And if you're frequently writing long and twisted AI prompts, you're probably already cloning the repo :)
 

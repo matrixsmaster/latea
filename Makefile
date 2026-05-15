@@ -1,40 +1,28 @@
 CXX = g++
-CXXFLAGS = -Wall -std=c++17 `fltk-config --cxxflags`
-LDFLAGS = `fltk-config --ldflags` -pthread
-OBJS = latea_ui.o main.o common.o prefs.o history.o llama_client.o autocomplete.o editor.o
+FLUID = fluid
+APP = latea
 
-all: latea
+AVX_FLAGS = -march=native -mtune=native -mavx2 -mfma
+
+CXXFLAGS = -Wall -Ofast -fopenmp `fltk-config --cxxflags` $(AVX_FLAGS)
+LDFLAGS = -flto `fltk-config --ldflags` -pthread -fopenmp
+
+# editor objects
+OBJS = latea_ui.o editor.o common.o prefs.o history.o llama_client.o autocomp.o font_dialog.o emb_ai.o
+# LiGGUF objects
+OBJS += ligguf_tq/common.o ligguf_tq/lil_gguf.o ligguf_tq/lil_math.o ligguf_tq/tokenize.o ligguf_tq/runtime.o
+
+all: $(APP)
 .PHONY: all
 
-latea_ui.cpp latea_ui.h: latea.fl
-	fluid -c latea.fl
-
-latea: $(OBJS)
+$(APP): $(OBJS)
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS)
 
-main.o: main.cpp editor.h
-	$(CXX) $(CXXFLAGS) -c main.cpp
+latea_ui.cpp latea_ui.h: latea.fl
+	$(FLUID) -c latea.fl
 
-common.o: common.cpp common.h
-	$(CXX) $(CXXFLAGS) -c common.cpp
-
-prefs.o: prefs.cpp prefs.h common.h
-	$(CXX) $(CXXFLAGS) -c prefs.cpp
-
-history.o: history.cpp history.h common.h
-	$(CXX) $(CXXFLAGS) -c history.cpp
-
-llama_client.o: llama_client.cpp llama_client.h common.h
-	$(CXX) $(CXXFLAGS) -c llama_client.cpp
-
-autocomplete.o: autocomplete.cpp autocomplete.h editor.h common.h latea_ui.h
-	$(CXX) $(CXXFLAGS) -c autocomplete.cpp
-
-editor.o: editor.cpp editor.h common.h prefs.h history.h autocomplete.h latea_ui.h
-	$(CXX) $(CXXFLAGS) -c editor.cpp
-
-latea_ui.o: latea_ui.cpp latea_ui.h
-	$(CXX) $(CXXFLAGS) -c latea_ui.cpp
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f latea *.o latea_ui.cpp latea_ui.h
+	rm -f $(APP) *.o latea_ui.* ligguf_tq/*.o

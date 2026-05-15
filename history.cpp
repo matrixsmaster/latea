@@ -1,15 +1,15 @@
 #include "common.h"
 #include "history.h"
 
-static int can_coalesce(const edit_action &prev, const edit_action &next, double last_edit_time)
+static bool can_coalesce(const edit_action &prev, const edit_action &next, double last_edit_time)
 {
     double now = now_seconds();
-    if (now - last_edit_time > 1.0) return 0;
+    if (now - last_edit_time > 1.0) return false;
     if (!prev.removed.empty() || !next.removed.empty()) {
         if (prev.inserted.empty() && next.inserted.empty() && !prev.removed.empty() && !next.removed.empty()) {
             return next.pos + (int)next.removed.size() == prev.pos || next.pos == prev.pos;
         }
-        return 0;
+        return false;
     }
     return prev.pos + (int)prev.inserted.size() == next.pos;
 }
@@ -49,7 +49,7 @@ void edit_history::record(const edit_action &action)
     last_edit_time = now_seconds();
 }
 
-bool edit_history::undo(Fl_Text_Buffer *textbuf, int &cursor_pos)
+bool edit_history::undo(Fl_Text_Buffer* textbuf, int &cursor_pos)
 {
     if (undo_stack.empty()) return false;
     replaying = true;
@@ -62,7 +62,7 @@ bool edit_history::undo(Fl_Text_Buffer *textbuf, int &cursor_pos)
     return true;
 }
 
-bool edit_history::redo(Fl_Text_Buffer *textbuf, int &cursor_pos)
+bool edit_history::redo(Fl_Text_Buffer* textbuf, int &cursor_pos)
 {
     if (redo_stack.empty()) return false;
     replaying = true;
@@ -73,14 +73,4 @@ bool edit_history::redo(Fl_Text_Buffer *textbuf, int &cursor_pos)
     undo_stack.push_back(action);
     replaying = false;
     return true;
-}
-
-bool edit_history::can_undo() const
-{
-    return !undo_stack.empty();
-}
-
-bool edit_history::can_redo() const
-{
-    return !redo_stack.empty();
 }

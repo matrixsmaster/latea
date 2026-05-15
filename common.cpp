@@ -6,32 +6,34 @@
 #include <unistd.h>
 #include "common.h"
 
-std::string trim_newlines(const std::string &s)
+using namespace std;
+
+string trim_newlines(const string &s)
 {
-    std::string out = s;
+    string out = s;
     while (!out.empty() && (out[out.size() - 1] == '\n' || out[out.size() - 1] == '\r')) {
         out.erase(out.size() - 1, 1);
     }
     return out;
 }
 
-std::string lowercase(const std::string &s)
+string lowercase(const string &s)
 {
-    std::string out = s;
+    string out = s;
     for (size_t i = 0; i < out.size(); i++) {
         out[i] = (char)tolower((unsigned char)out[i]);
     }
     return out;
 }
 
-int is_word_char(char c)
+bool is_word_char(char c)
 {
     return isalnum((unsigned char)c) || c == '_';
 }
 
-std::string json_escape(const std::string &s)
+string json_escape(const string &s)
 {
-    std::string out;
+    string out;
     for (size_t i = 0; i < s.size(); i++) {
         unsigned char c = (unsigned char)s[i];
         if (c == '\\') out += "\\\\";
@@ -50,9 +52,9 @@ std::string json_escape(const std::string &s)
     return out;
 }
 
-std::string json_unescape(const std::string &s)
+string json_unescape(const string &s)
 {
-    std::string out;
+    string out;
     for (size_t i = 0; i < s.size(); i++) {
         if (s[i] != '\\' || i + 1 >= s.size()) {
             out += s[i];
@@ -72,9 +74,9 @@ std::string json_unescape(const std::string &s)
     return out;
 }
 
-std::string sanitize_suggestion(const std::string &text, int max_chars)
+string sanitize_suggestion(const string &text, int max_chars)
 {
-    std::string out;
+    string out;
     out.reserve(text.size());
     for (size_t i = 0; i < text.size(); i++) {
         unsigned char c = (unsigned char)text[i];
@@ -86,14 +88,29 @@ std::string sanitize_suggestion(const std::string &text, int max_chars)
         out += (char)c;
     }
     out = trim_newlines(out);
-    while (!out.empty() && (out[0] == ' ' || out[0] == '\t')) out.erase(0, 1);
     if ((int)out.size() > max_chars) out.erase(max_chars);
     return out;
 }
 
-double now_seconds()
+int digit_count(int value)
 {
-    using namespace std::chrono;
-    return duration_cast<std::chrono::duration<double> >(std::chrono::steady_clock::now().time_since_epoch()).count();
+    int digits = 1;
+    for (int n = value; n >= 10; n /= 10) digits++;
+    return digits;
 }
 
+int count_newlines(const char* text)
+{
+    if (!text) return 0;
+    int count = 0;
+    for (const char* p = text; *p; p++) {
+        if (*p == '\n') count++;
+    }
+    return count;
+}
+
+double now_seconds()
+{
+    using namespace chrono;
+    return duration_cast<chrono::duration<double> >(chrono::steady_clock::now().time_since_epoch()).count();
+}
