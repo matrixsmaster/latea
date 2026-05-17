@@ -68,13 +68,11 @@ And for people who both write and program, Latea may be especially comfortable: 
 
 ## Autocomplete modes
 
-Latea currently supports multiple autocomplete modes.
+Latea currently supports multiple autocomplete modes. Each mode can work both in a single-shot manual mode, as well as providing continuously adapting suggestions.
 
 ### Disabled
 
 No autocomplete. Just plain editing.
-
-This is the mode for purists, minimalists, benchmark writers, and people who looked at autocomplete and said: "not today, ghost text."
 
 ### Dictionary file
 
@@ -168,7 +166,7 @@ Latea was built in memory of the endangered plain text editor with GUI: a small 
 
 This may sound primitive. Possibly even reckless.
 
-Where is the account system? Where is the plugin marketplace? What if I want to edit each 6th column on each 4th row? Where is the premium AI writing plan for only $99.99 a month? Where is the video tour explaining the concept of a cursor?
+Where is the account system? Where can I buy plugins? What if I want to edit each 6th column on each 4th row? Where is the premium AI writing plan for only $99.99 a month? Where is the video tour explaining the concept of a cursor?
 
 Nowhere, mercifully.
 
