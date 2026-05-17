@@ -4,16 +4,20 @@ APP = latea
 
 AVX_FLAGS = -march=native -mtune=native -mavx2 -mfma
 
-CXXFLAGS = -Wall -Ofast -fopenmp `fltk-config --cxxflags` $(AVX_FLAGS)
-LDFLAGS = -flto `fltk-config --ldflags` -pthread -fopenmp
+CXXFLAGS = -Wall -Ofast -fopenmp `fltk-config --use-images --cxxflags` $(AVX_FLAGS)
+LDFLAGS = -flto `fltk-config --use-images --ldflags` -pthread -fopenmp
 
 # editor objects
-OBJS = latea_ui.o editor.o common.o prefs.o history.o llama_client.o autocomp.o font_dialog.o emb_ai.o
+OBJS = latea_ui.o editor.o common.o prefs.o prefs_dlg.o history.o llama_client.o autocomp.o font_dialog.o emb_ai.o
 # LiGGUF objects
 OBJS += ligguf_tq/common.o ligguf_tq/lil_gguf.o ligguf_tq/lil_math.o ligguf_tq/tokenize.o ligguf_tq/runtime.o
 
 all: $(APP)
 .PHONY: all
+
+install:
+	./install.sh
+.PHONY: install
 
 $(APP): $(OBJS)
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS)

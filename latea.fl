@@ -8,12 +8,13 @@ class LateaUI {open
   } {
     Fl_Window main_window {
       label Latea
-      callback {g_wnd->close_main_window();}
+      callback {g_wnd->close_main_window();} selected
       xywh {314 159 635 475} type Double resizable
-      code0 {\#include "editor.h"
-\#include "font_dialog.h"} visible
+      code0 {\#include "editor.h"}
+      code1 {\#include "font_dialog.h"}
+      code2 {\#include "prefs_dlg.h"} visible
     } {
-      Fl_Menu_Bar main_menu {open
+      Fl_Menu_Bar {} {open
         xywh {0 0 635 28}
       } {
         Submenu {} {
@@ -42,9 +43,8 @@ class LateaUI {open
           }
           MenuItem {} {
             label {Preferences...}
-            callback {g_wnd->sync_ui_to_prefs();
-  prefs_window->show();}
-            xywh {0 0 100 20} divider
+            callback {g_prefs_dlg->open();}
+            xywh {0 0 100 20} shortcut 0x4002c divider
           }
           MenuItem {} {
             label Quit
@@ -100,7 +100,7 @@ class LateaUI {open
             label {Word Wrap}
             callback {g_wnd->prefs.word_wrap = o->mvalue() ? o->mvalue()->value() : 0;
 g_wnd->apply_preferences();}
-            xywh {0 0 100 20} type Toggle shortcut 0xffc1
+            xywh {0 0 100 20} type Toggle shortcut 0xffc3
           }
           MenuItem view_lines {
             label {Line Numbers}
@@ -113,6 +113,11 @@ g_wnd->apply_preferences();}
           label Tools open
           xywh {0 0 100 20}
         } {
+          MenuItem {} {
+            label Stats
+            callback {g_wnd->show_stats();}
+            xywh {0 0 100 20} divider
+          }
           Submenu {} {
             label Autocomplete open
             xywh {0 0 100 20}
@@ -127,6 +132,11 @@ g_wnd->apply_preferences();}
               callback {g_wnd->clear_suggestion();}
               xywh {5 5 100 20} shortcut 0xff1b divider
             }
+            MenuItem {} {
+              label Reset
+              callback {g_wnd->reset_autocomp();}
+              xywh {5 5 100 20}
+            }
             Submenu {} {
               label Type open
               xywh {0 0 100 20}
@@ -134,35 +144,49 @@ g_wnd->apply_preferences();}
               MenuItem autocmp_dis {
                 label Disabled
                 callback {g_wnd->set_autocomp_mode(AUTOCOMPLETE_DISABLED);}
-                xywh {5 5 100 20} type Radio
+                xywh {5 5 100 20} type Radio shortcut 0xffbe
               }
               MenuItem autocmp_dict {
                 label {Dictionary File}
                 callback {g_wnd->set_autocomp_mode(AUTOCOMPLETE_DICTIONARY_FILE);}
-                xywh {5 5 100 20} type Radio
+                xywh {5 5 100 20} type Radio shortcut 0xffbf
               }
               MenuItem autocmp_cur {
                 label {Current File}
                 callback {g_wnd->set_autocomp_mode(AUTOCOMPLETE_CURRENT_FILE);}
-                xywh {5 5 100 20} type Radio
+                xywh {5 5 100 20} type Radio shortcut 0xffc0
               }
               MenuItem autocmp_ai {
                 label {AI Connector}
                 callback {g_wnd->set_autocomp_mode(AUTOCOMPLETE_AI);}
-                xywh {5 5 100 20} type Radio
+                xywh {5 5 100 20} type Radio shortcut 0xffc1
               }
               MenuItem autocmp_embedded {
                 label {Embedded AI}
                 callback {g_wnd->set_autocomp_mode(AUTOCOMPLETE_EMBEDDED_AI);}
-                xywh {5 5 100 20} type Radio
+                xywh {5 5 100 20} type Radio shortcut 0x1ffc1
               }
             }
             MenuItem autocmp_cont {
               label Continuous
-              callback {g_wnd->prefs.cont_autocomp = o->mvalue() ? o->mvalue()->value() : 0;
-g_wnd->apply_preferences();}
+              callback {g_wnd->prefs.cont_autocomp = o->mvalue() ? o->mvalue()->value() : 0;}
               xywh {0 0 100 20} type Toggle shortcut 0xffc5
             }
+          }
+        }
+        Submenu {} {
+          label Help open
+          xywh {0 0 100 20}
+        } {
+          MenuItem {} {
+            label Models
+            callback {g_wnd->ui->models_window->show();}
+            xywh {0 0 100 20}
+          }
+          MenuItem {} {
+            label About
+            callback {g_wnd->ui->about_window->show();}
+            xywh {0 0 100 20}
           }
         }
       }
@@ -176,38 +200,30 @@ g_wnd->apply_preferences();}
       } {
         Fl_Box status_box {
           label Ready
-          xywh {0 451 375 24} box DOWN_BOX align 20
+          xywh {0 451 340 24} box DOWN_BOX align 20
+        }
+        Fl_Box caret_box {
+          label {0 : 0}
+          xywh {340 451 85 24} box DOWN_BOX align 20
         }
         Fl_Box ai_status_box {
-          label {AI idle}
-          xywh {375 451 260 24} box DOWN_BOX align 20
+          xywh {425 451 210 24} box DOWN_BOX align 20
         }
       }
     }
     Fl_Window find_window {
       label {Find / Replace}
-      callback {o->hide();}
       xywh {314 159 430 120} type Double visible
     } {
-      Fl_Box {} {
-        label {Find:}
-        xywh {12 14 78 24}
-      }
       Fl_Input find_text_input {
+        label Find
         xywh {96 12 320 24}
       }
-      Fl_Group replace_group {
-        xywh {12 44 404 26}
-      } {
-        Fl_Box replace_label_box {
-          label {Replace:}
-          xywh {12 46 78 24}
-        }
-        Fl_Input replace_text_input {
-          xywh {96 44 320 24}
-        }
+      Fl_Input replace_text_input {
+        label Replace
+        xywh {95 46 320 24}
       }
-      Fl_Button find_next_button {
+      Fl_Button {} {
         label {Find Next}
         callback {g_wnd->find_next();}
         xywh {10 80 90 30}
@@ -222,7 +238,7 @@ g_wnd->apply_preferences();}
         callback {g_wnd->replace_all();}
         xywh {210 80 100 30}
       }
-      Fl_Button close_find_button {
+      Fl_Button {} {
         label Close
         callback {o->window()->hide();}
         xywh {324 80 90 30}
@@ -230,115 +246,141 @@ g_wnd->apply_preferences();}
     }
     Fl_Window prefs_window {
       label Preferences
-      callback {o->hide();} selected
-      xywh {314 159 460 490} type Double visible
+      xywh {314 159 460 415} type Double modal visible
     } {
-      Fl_Input dictionary_path_input {
-        label {Dictionary path}
-        xywh {144 7 266 24}
-      }
-      Fl_Button dictionary_path_button {
-        label {...}
-        callback {g_wnd->browse_dictionary_path();}
-        xywh {415 6 35 24}
-      }
-      Fl_Input max_chars_input {
-        label {Max suggestion}
-        xywh {144 36 80 24} type Int
-      }
-      Fl_Input model_path_input {
-        label {Model path}
-        xywh {144 68 266 24}
-      }
-      Fl_Button model_path_button {
-        label {...}
-        callback {g_wnd->browse_model_path();}
-        xywh {415 67 35 24}
-      }
-      Fl_Input ai_host_input {
-        label {AI host}
-        xywh {144 100 180 24}
-      }
-      Fl_Input ai_port_input {
-        label {AI port}
-        xywh {144 132 80 24} type Int
-      }
-      Fl_Choice endpoint_mode_choice {
-        label {Endpoint mode} open
-        xywh {144 164 180 24} down_box BORDER_BOX
-      } {
-        MenuItem {} {
-          label {Completion Only}
-          xywh {0 0 100 20}
-        }
-        MenuItem {} {
-          label {Prefer Infill}
-          xywh {0 0 100 20}
-        }
-      }
-      Fl_Input ai_delay_input {
-        label {Delay ms}
-        xywh {144 196 80 24} type Int
-      }
-      Fl_Input ai_timeout_input {
-        label {Timeout ms}
-        xywh {144 228 80 24} type Int
-      }
-      Fl_Input ai_context_input {
-        label {Context length}
-        xywh {144 260 80 24} type Int
-      }
-      Fl_Input ai_temperature_input {
-        label Temperature
-        xywh {144 292 80 24}
-      }
-      Fl_Input ai_top_p_input {
-        label {Top P}
-        xywh {280 292 58 24}
-      }
-      Fl_Input ai_top_k_input {
-        label {Top K}
-        xywh {390 292 58 24} type Int
-      }
-      Fl_Input ai_prefix_input {
-        label {Prefix chars}
-        xywh {144 324 80 24} type Int
-      }
-      Fl_Input ai_suffix_input {
-        label {Suffix chars}
-        xywh {144 356 80 24} type Int
-      }
-      Fl_Input ai_slot_input {
-        label {AI slot id}
-        xywh {144 388 80 24} type Int
-      }
-      Fl_Check_Button ai_cache_check {
-        label {Use prompt cache}
-        xywh {235 388 170 24} down_box DOWN_BOX
-      }
-      Fl_Input system_prompt_input {
-        label {System prompt}
-        xywh {144 420 306 24}
-      }
-      Fl_Return_Button prefs_ok_button {
+      Fl_Return_Button {} {
         label OK
-        callback {{
-  g_wnd->sync_prefs_from_ui();
-  g_wnd->apply_preferences();
-  o->window()->hide();
-}}
-        xywh {285 454 80 28}
+        callback {g_prefs_dlg->accept();}
+        xywh {290 377 80 28}
       }
-      Fl_Button prefs_cancel_button {
+      Fl_Button {} {
         label Cancel
         callback {o->window()->hide();}
-        xywh {370 454 80 28}
+        xywh {375 377 80 28}
+      }
+      Fl_Input_Choice prefs_preset {
+        label Preset
+        callback {g_prefs_dlg->preset_changed();} open
+        xywh {60 5 275 25}
+      } {}
+      Fl_Group {} {
+        xywh {5 35 450 335} box ENGRAVED_FRAME
+      } {
+        Fl_Input dictionary_path_input {
+          label {Dictionary path}
+          xywh {146 42 266 24}
+        }
+        Fl_Button dictionary_path_button {
+          label {...}
+          callback {g_wnd->browse_dictionary_path();}
+          xywh {417 41 33 24}
+        }
+        Fl_Input max_chars_input {
+          label {Max suggestion}
+          xywh {146 71 80 24} type Int
+        }
+        Fl_Input model_path_input {
+          label {Model path}
+          xywh {146 101 266 24}
+        }
+        Fl_Button model_path_button {
+          label {...}
+          callback {g_wnd->browse_model_path();}
+          xywh {417 101 33 24}
+        }
+        Fl_Input llama_path_input {
+          label {llama.cpp path}
+          xywh {146 131 266 24}
+        }
+        Fl_Button llama_path_button {
+          label {...}
+          callback {g_wnd->browse_llama_path();}
+          xywh {417 131 33 24}
+        }
+        Fl_Input ai_host_input {
+          label {AI host}
+          xywh {145 161 189 24}
+        }
+        Fl_Input ai_port_input {
+          label port
+          xywh {370 161 80 24} type Int
+        }
+        Fl_Choice endpoint_mode_choice {
+          label {Endpoint mode}
+          xywh {145 191 155 24} down_box BORDER_BOX
+        } {
+          MenuItem {} {
+            label {Completion Only}
+            xywh {5 5 100 20}
+          }
+          MenuItem {} {
+            label {Prefer Infill}
+            xywh {5 5 100 20}
+          }
+        }
+        Fl_Input ai_delay_input {
+          label {Delay ms}
+          xywh {300 71 80 24} type Int
+        }
+        Fl_Input ai_timeout_input {
+          label Timeout
+          xywh {370 191 80 24} type Int
+        }
+        Fl_Input ai_context_input {
+          label {Context length}
+          xywh {145 251 104 24} type Int
+        }
+        Fl_Input ai_temperature_input {
+          label Temperature
+          xywh {145 311 80 24}
+        }
+        Fl_Input ai_top_p_input {
+          label {Top P}
+          xywh {281 311 58 24}
+        }
+        Fl_Input ai_top_k_input {
+          label {Top K}
+          xywh {391 311 58 24} type Int
+        }
+        Fl_Input ai_prefix_input {
+          label {Prefix chars}
+          xywh {145 281 104 24} type Int
+        }
+        Fl_Input ai_suffix_input {
+          label {Suffix chars}
+          xywh {349 281 100 24} type Int
+        }
+        Fl_Input ai_slot_input {
+          label {AI slot id}
+          xywh {145 221 104 24} type Int
+        }
+        Fl_Check_Button ai_cache_check {
+          label {Use prompt cache}
+          xywh {260 221 170 24} down_box DOWN_BOX
+        }
+        Fl_Check_Button ai_tq_check {
+          label TurboQuant
+          xywh {260 251 120 24} down_box DOWN_BOX
+        }
+        Fl_Input system_prompt_input {
+          label {System prompt}
+          xywh {145 341 305 24}
+        }
+      }
+      Fl_Button {} {
+        label New
+        callback {g_prefs_dlg->new_preset();}
+        xywh {340 5 55 25}
+      }
+      Fl_Button {} {
+        label Delete
+        callback {g_prefs_dlg->del_preset();}
+        xywh {400 5 55 25}
       }
     }
     Fl_Window font_window {
       label {Choose Font}
-      callback {o->hide();}
-      xywh {314 159 545 385} type Double visible
+      xywh {314 159 545 385} type Double modal visible
     } {
       Fl_Browser font_browser {
         label Font
@@ -355,55 +397,124 @@ g_wnd->apply_preferences();}
         xywh {339 36 62 24} type Int when 12
       }
       Fl_Box font_preview {
-        xywh {235 209 165 58} box DOWN_BOX align 144
+        xywh {235 209 305 58} box DOWN_BOX align 144
       }
       Fl_Box ghost_preview {
-        xywh {235 274 165 58} box DOWN_BOX align 144
+        xywh {235 274 305 58} box DOWN_BOX align 144
       }
-      Fl_Return_Button font_ok_button {
+      Fl_Return_Button {} {
         label OK
         callback {g_font_dlg->accept();}
         xywh {10 347 260 28}
       }
-      Fl_Button font_cancel_button {
+      Fl_Button {} {
         label Cancel
         callback {o->window()->hide();}
         xywh {280 347 260 28}
       }
       Fl_Group {} {
         label Colors open
-        xywh {405 35 135 300} box ENGRAVED_FRAME
+        xywh {405 35 135 165} box ENGRAVED_FRAME
       } {
-        Fl_Button font_color_button {
+        Fl_Button {} {
           label Text
           callback {g_font_dlg->choose_text_color();}
           xywh {415 47 115 28}
         }
-        Fl_Button ghost_color_button {
+        Fl_Button {} {
           label Ghost
           callback {g_font_dlg->choose_ghost_color();}
           xywh {415 82 115 28}
         }
-        Fl_Button background_color_button {
+        Fl_Button {} {
           label Background
           callback {g_font_dlg->choose_background_color();}
           xywh {415 117 115 28}
         }
-        Fl_Button selection_color_button {
+        Fl_Button {} {
           label Selection
           callback {g_font_dlg->choose_selection_color();}
           xywh {415 152 115 28}
         }
-        Fl_Button linenumber_fg_color_button {
-          label Numbers
-          callback {g_font_dlg->choose_linenumber_fg_color();}
-          xywh {415 187 115 28}
-        }
-        Fl_Button linenumber_bg_color_button {
-          label {Numbers back}
-          callback {g_font_dlg->choose_linenumber_bg_color();}
-          xywh {415 222 115 28}
-        }
+      }
+    }
+    Fl_Window about_window {
+      label About
+      xywh {314 159 355 185} type Double modal visible
+    } {
+      Fl_Box about_icon {
+        xywh {5 12 128 128} box DOWN_BOX
+      }
+      Fl_Box about_text {
+        label Latea
+        private xywh {135 12 215 125} align 145
+        code0 {\#include "common.h"}
+        code1 {about_text->label(ABOUT_TEXT);}
+      }
+      Fl_Return_Button {} {
+        label Close
+        callback {o->window()->hide();}
+        xywh {5 147 345 28}
+      }
+    }
+    Fl_Window stats_window {
+      label Stats
+      xywh {314 159 200 230} type Double modal visible
+    } {
+      Fl_Value_Output stats_lines_out {
+        label {Total lines}
+        xywh {100 10 90 25}
+      }
+      Fl_Value_Output stats_maxlen_out {
+        label {Max length}
+        xywh {100 40 90 25}
+      }
+      Fl_Value_Output stats_words_out {
+        label Words
+        xywh {100 70 90 25}
+      }
+      Fl_Value_Output stats_toks_out {
+        xywh {100 100 90 25}
+      }
+      Fl_Value_Output stats_chars_out {
+        label Characters
+        xywh {100 130 90 25}
+      }
+      Fl_Value_Output stats_bytes_out {
+        label Bytes
+        xywh {100 160 90 25}
+      }
+      Fl_Return_Button {} {
+        label Close
+        callback {o->window()->hide();}
+        xywh {10 192 180 28}
+      }
+      Fl_Button {} {
+        label Tokens
+        callback {stats_toks_out->value(g_wnd->count_tokens());}
+        xywh {10 100 85 25}
+      }
+    }
+    Fl_Window models_window {
+      label Models
+      xywh {314 159 340 230} type Double modal visible
+    } {
+      Fl_Return_Button {} {
+        label Close
+        callback {o->window()->hide();}
+        xywh {10 187 320 28}
+      }
+      Fl_Output sup_arch {
+        label {Supported architectures}
+        private xywh {10 25 320 60} box DOWN_FRAME align 1
+        code0 {\#include "common.h"}
+        code1 {sup_arch->value(ARCHITECTURES);}
+      }
+      Fl_Output sup_feat {
+        label {Supported features}
+        private xywh {10 110 320 60} box DOWN_FRAME align 1
+        code0 {\#include "common.h"}
+        code1 {sup_feat->value(CAPABILITIES);}
       }
     }
   }

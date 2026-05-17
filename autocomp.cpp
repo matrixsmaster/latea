@@ -1,22 +1,12 @@
 #include <FL/Fl.H>
 #include <algorithm>
+#include <cerrno>
 #include <cstdlib>
 #include <fstream>
 #include <set>
 #include "common.h"
 #include "autocomp.h"
 #include "editor.h"
-
-void autocomp::timer_cb(void *data)
-{
-    autocomp *cmpt = (autocomp *)data;
-    if (now_seconds() < cmpt->due_time) {
-        Fl::repeat_timeout(AUTOCOMPLETE_POLL_SEC, timer_cb, data);
-        return;
-    }
-    cmpt->timer_active = false;
-    cmpt->trigger_now();
-}
 
 autocomp::~autocomp()
 {
@@ -26,17 +16,20 @@ autocomp::~autocomp()
 void autocomp::cancel_pending()
 {
     cancel_timer();
+    reset_state();
 }
 
 void autocomp::on_preferences_changed()
 {
     cancel_timer();
+    reset_state();
     g_wnd->clear_suggestion();
 }
 
 void autocomp::on_text_changed(int, int, int, const char *)
 {
     if (g_wnd->suppress_autocomp || g_wnd->history.replaying) return;
+    reset_state();
     g_wnd->clear_suggestion();
     if (g_wnd->prefs.cont_autocomp) schedule();
 }
@@ -44,8 +37,19 @@ void autocomp::on_text_changed(int, int, int, const char *)
 void autocomp::on_cursor_changed()
 {
     if (g_wnd->suppress_autocomp) return;
+    reset_state();
     g_wnd->clear_suggestion();
-    if (g_wnd->prefs.cont_autocomp) schedule();
+}
+
+static void timer_cb(void* data)
+{
+    autocomp* cmpt = (autocomp*)data;
+    if (now_seconds() < cmpt->due_time) {
+        Fl::repeat_timeout(AUTOCOMPLETE_POLL_SEC, timer_cb, data);
+        return;
+    }
+    cmpt->timer_active = false;
+    cmpt->trigger_now();
 }
 
 void autocomp::schedule()
@@ -130,6 +134,7 @@ bool autocomp_dict::complete(std::string &text, int &anchor_pos)
 {
     std::string prefix;
     std::string prefix_lower;
+    int pos;
     if (!current_word(prefix, anchor_pos)) return 0;
     if (!g_wnd->prefs.dict_path.size()) return false;
     if (loaded_path != g_wnd->prefs.dict_path) {
@@ -140,24 +145,35 @@ bool autocomp_dict::complete(std::string &text, int &anchor_pos)
         loaded_path = g_wnd->prefs.dict_path;
     }
 
+    opts.clear();
+    opt_idx = 0;
+    opt_anchor = anchor_pos;
     prefix_lower = lowercase(prefix);
+    pos = g_wnd->editor->insert_position();
     for (size_t i = 0; i < words.size(); i++) {
         if (words[i].size() <= prefix.size()) continue;
         if (lowercase(words[i].substr(0, prefix.size())) != prefix_lower) continue;
-        text = words[i].substr(prefix.size());
-        return !text.empty();
+        if (opt_anchor != pos) continue;
+        opts.push_back(words[i].substr(prefix.size()));
     }
-    return false;
+    if (opts.empty()) return false;
+    g_wnd->set_suggestion_list(opts, 0, anchor_pos);
+    text = opts[0];
+    return true;
 }
 
 bool autocomp_file::complete(std::string &text, int &anchor_pos)
 {
     std::string prefix;
     std::set<std::string> options;
+    int pos;
     if (!current_word(prefix, anchor_pos)) return 0;
 
+    opts.clear();
+    opt_idx = 0;
+    opt_anchor = anchor_pos;
+    pos = g_wnd->editor->insert_position();
     char *all = g_wnd->textbuf->text();
-    std::string best;
     for (char *p = all; p && *p;) {
         while (*p && !is_word_char(*p)) p++;
         if (!*p) break;
@@ -171,16 +187,73 @@ bool autocomp_file::complete(std::string &text, int &anchor_pos)
     if (all) free(all);
 
     for (std::set<std::string>::iterator it = options.begin(); it != options.end(); ++it) {
-        if (best.empty() || it->size() < best.size()) best = *it;
+        if (opt_anchor != pos) continue;
+        opts.push_back(it->substr(prefix.size()));
     }
-    if (best.empty()) return false;
-    text = best.substr(prefix.size());
-    return !text.empty();
+    if (opts.empty()) return false;
+    g_wnd->set_suggestion_list(opts, 0, anchor_pos);
+    text = opts[0];
+    return true;
+}
+
+bool autocomp_dict::move_suggestion(int dir)
+{
+    if (!g_wnd->suggest.visible || g_wnd->editor->insert_position() != opt_anchor || opts.empty()) return false;
+    if (dir < 0) {
+        if (opt_idx <= 0) return false;
+        opt_idx--;
+    } else {
+        if (opt_idx + 1 >= (int)opts.size()) return false;
+        opt_idx++;
+    }
+    g_wnd->set_suggestion_list(opts, opt_idx, opt_anchor);
+    return true;
+}
+
+bool autocomp_file::move_suggestion(int dir)
+{
+    if (!g_wnd->suggest.visible || g_wnd->editor->insert_position() != opt_anchor || opts.empty()) return false;
+    if (dir < 0) {
+        if (opt_idx <= 0) return false;
+        opt_idx--;
+    } else {
+        if (opt_idx + 1 >= (int)opts.size()) return false;
+        opt_idx++;
+    }
+    g_wnd->set_suggestion_list(opts, opt_idx, opt_anchor);
+    return true;
+}
+
+static void poll_cb(void *data)
+{
+    autocomp_ai *self = (autocomp_ai *)data;
+    bool done;
+    bool running;
+    bool queued;
+
+    pthread_mutex_lock(&self->lock);
+    done = self->worker_done;
+    running = self->worker_running;
+    queued = self->have_queued;
+    pthread_mutex_unlock(&self->lock);
+
+    if (running && !done) self->poll_running();
+    if (done) self->finish_worker();
+
+    pthread_mutex_lock(&self->lock);
+    running = self->worker_running;
+    queued = self->have_queued;
+    pthread_mutex_unlock(&self->lock);
+    if (running || queued) {
+        Fl::repeat_timeout(AUTOCOMPLETE_POLL_SEC, poll_cb, data);
+        return;
+    }
+    self->poll_active = false;
 }
 
 autocomp_ai::autocomp_ai()
 {
-    pthread_mutex_init(mutex(), NULL);
+    pthread_mutex_init(&lock, NULL);
     worker_running = false;
     worker_done = false;
     worker_ok = false;
@@ -188,7 +261,7 @@ autocomp_ai::autocomp_ai()
     poll_active = false;
     have_queued = false;
     next_serial = 0;
-    latest_serial = 0;
+    last_serial = 0;
 }
 
 autocomp_ai::~autocomp_ai()
@@ -196,7 +269,7 @@ autocomp_ai::~autocomp_ai()
     cancel_timer();
     if (poll_active) Fl::remove_timeout(poll_cb, this);
     if (worker_running && !worker_joined) pthread_join(worker, NULL);
-    pthread_mutex_destroy(mutex());
+    pthread_mutex_destroy(&lock);
 }
 
 void autocomp_ai::on_preferences_changed()
@@ -204,6 +277,18 @@ void autocomp_ai::on_preferences_changed()
     autocomp::on_preferences_changed();
     cancel_pending();
     on_preferences_changed_backend();
+}
+
+void autocomp_ai::on_text_changed(int pos, int inserted, int deleted, const char* deleted_text)
+{
+    cancel_pending();
+    autocomp::on_text_changed(pos, inserted, deleted, deleted_text);
+}
+
+void autocomp_ai::on_cursor_changed()
+{
+    cancel_pending();
+    autocomp::on_cursor_changed();
 }
 
 void autocomp_ai::trigger_now()
@@ -222,9 +307,10 @@ void autocomp_ai::trigger_now()
 
 void autocomp_ai::cancel_pending()
 {
-    pthread_mutex_lock(mutex());
+    invalidate_serial();
+    pthread_mutex_lock(&lock);
     have_queued = false;
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_unlock(&lock);
     cancel_timer();
     on_cancel_pending_backend();
 }
@@ -234,9 +320,20 @@ bool autocomp_ai::is_busy() const
     return worker_running || have_queued;
 }
 
-bool autocomp_ai::complete(std::string &, int &)
+bool autocomp_ai::move_suggestion(int dir)
 {
-    return false;
+    if (!g_wnd->suggest.visible || g_wnd->editor->insert_position() != g_wnd->suggest.anchor_pos) return false;
+    if (dir < 0) {
+        if (g_wnd->suggest.var_idx <= 0) return false;
+        g_wnd->set_suggestion_list(g_wnd->suggest.vars, g_wnd->suggest.var_idx - 1, g_wnd->suggest.anchor_pos, g_wnd->suggest.request_id);
+        return true;
+    }
+    if (g_wnd->suggest.var_idx + 1 < (int)g_wnd->suggest.vars.size()) {
+        g_wnd->set_suggestion_list(g_wnd->suggest.vars, g_wnd->suggest.var_idx + 1, g_wnd->suggest.anchor_pos, g_wnd->suggest.request_id);
+        return true;
+    }
+    trigger_now();
+    return true;
 }
 
 bool autocomp_ai::build_request_text(std::string &prefix, std::string &suffix, int &anchor_pos)
@@ -265,31 +362,57 @@ bool autocomp_ai::build_request_text(std::string &prefix, std::string &suffix, i
 
 int autocomp_ai::next_request_serial()
 {
-    latest_serial = ++next_serial;
-    return latest_serial;
+    last_serial = ++next_serial;
+    return last_serial;
 }
+
+void autocomp_ai::reset_state()
+{
+    invalidate_serial();
+}
+
+void autocomp_ai::invalidate_serial()
+{
+    last_serial = ++next_serial;
+}
+
+static void* worker_main(void* data)
+{
+    autocomp_ai* self = (autocomp_ai*)data;
+    ai_result res;
+    bool ok = self->run_active_request(res);
+
+    pthread_mutex_lock(&self->lock);
+    self->finished_res = res;
+    self->worker_ok = ok;
+    self->worker_done = true;
+    pthread_mutex_unlock(&self->lock);
+    Fl::awake();
+    return NULL;
+}
+
 
 void autocomp_ai::start_worker()
 {
-    pthread_mutex_lock(mutex());
+    pthread_mutex_lock(&lock);
     activate_request_locked();
     worker_done = false;
     worker_ok = false;
     worker_running = true;
     worker_joined = false;
     on_worker_started_locked();
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_unlock(&lock);
 
     if (pthread_create(&worker, NULL, worker_main, this) != 0) {
-        pthread_mutex_lock(mutex());
+        pthread_mutex_lock(&lock);
         worker_running = false;
         worker_joined = true;
-        pthread_mutex_unlock(mutex());
-        g_wnd->update_ai_status((std::string(ai_label()) + " worker start failed").c_str());
+        pthread_mutex_unlock(&lock);
+        g_wnd->update_ai_status("AI worker start failed");
         return;
     }
 
-    g_wnd->update_ai_status((std::string(ai_label()) + " request pending").c_str());
+    g_wnd->update_ai_status("AI request pending");
     if (!poll_active) {
         poll_active = true;
         Fl::add_timeout(AUTOCOMPLETE_POLL_SEC, poll_cb, this);
@@ -302,12 +425,12 @@ void autocomp_ai::queue_or_start()
         start_worker();
         return;
     }
-    pthread_mutex_lock(mutex());
+    pthread_mutex_lock(&lock);
     queue_request_locked();
     have_queued = true;
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_unlock(&lock);
     on_request_queued();
-    g_wnd->update_ai_status((std::string(ai_label()) + " request queued").c_str());
+    g_wnd->update_ai_status("AI request queued");
 }
 
 void autocomp_ai::finish_worker()
@@ -317,19 +440,21 @@ void autocomp_ai::finish_worker()
     bool stale = false;
     ai_result res;
     bool ok = false;
+    int join_rc = 0;
 
-    pthread_mutex_lock(mutex());
+    pthread_mutex_lock(&lock);
     ok = worker_ok;
     res = finished_res;
     if (!worker_joined) {
-        pthread_mutex_unlock(mutex());
-        pthread_join(worker, NULL);
-        pthread_mutex_lock(mutex());
-        worker_joined = true;
+        pthread_mutex_unlock(&lock);
+        join_rc = pthread_tryjoin_np(worker, NULL);
+        if (join_rc == EBUSY) return;
+        pthread_mutex_lock(&lock);
+        worker_joined = join_rc == 0 || join_rc == ESRCH;
     }
     worker_running = false;
     worker_done = false;
-    stale = res.serial != latest_serial;
+    stale = res.serial != last_serial;
     if (have_queued) {
         load_queued_request_locked();
         have_queued = false;
@@ -337,74 +462,41 @@ void autocomp_ai::finish_worker()
         stale = true;
     }
     on_finish_locked(backend_action);
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_unlock(&lock);
 
     after_finish_unlocked(backend_action);
 
     if (!stale && ok && g_wnd->editor->insert_position() == res.anchor_pos && !g_wnd->suppress_autocomp) {
         publish(res.text, res.anchor_pos, res.serial);
-        g_wnd->update_ai_status((std::string(ai_label()) + " suggestion ready").c_str());
+        g_wnd->update_ai_status("AI suggestion ready");
     } else if (!stale && !ok && !res.error.empty()) {
         g_wnd->update_ai_status(res.error.c_str());
         g_wnd->clear_suggestion();
     } else if (stale) {
-        g_wnd->update_ai_status((std::string(ai_label()) + " stale result discarded").c_str());
+        g_wnd->update_ai_status("AI stale result discarded");
     }
 
     if (start_queued) start_worker();
 }
 
-void *autocomp_ai::worker_main(void *data)
-{
-    autocomp_ai *self = (autocomp_ai *)data;
-    ai_result res;
-    bool ok = self->run_active_request(res);
-
-    pthread_mutex_lock(self->mutex());
-    self->finished_res = res;
-    self->worker_ok = ok;
-    self->worker_done = true;
-    pthread_mutex_unlock(self->mutex());
-    Fl::awake();
-    return NULL;
-}
-
-void autocomp_ai::poll_cb(void *data)
-{
-    autocomp_ai *self = (autocomp_ai *)data;
-    bool done;
-    bool running;
-
-    pthread_mutex_lock(self->mutex());
-    done = self->worker_done;
-    running = self->worker_running;
-    pthread_mutex_unlock(self->mutex());
-
-    if (running && !done) self->poll_running();
-    if (done) self->finish_worker();
-    if (self->worker_running || self->have_queued) {
-        Fl::repeat_timeout(AUTOCOMPLETE_POLL_SEC, poll_cb, data);
-        return;
-    }
-    self->poll_active = false;
-}
-
 bool autocomp_lan_ai::build_request()
 {
-    if (!build_request_text(pending_req.prefix, pending_req.suffix, pending_req.anchor_pos)) return false;
-    pending_req.serial = next_request_serial();
-    pending_req.system_prompt = g_wnd->prefs.ai_system_prompt;
-    pending_req.endpoint_mode = g_wnd->prefs.ai_endpoint_mode;
-    pending_req.max_chars = g_wnd->prefs.max_suggestion_chars;
-    pending_req.timeout_ms = g_wnd->prefs.ai_timeout_ms;
-    pending_req.context_length = g_wnd->prefs.ai_context_length;
-    pending_req.temperature = g_wnd->prefs.ai_temperature;
-    pending_req.top_p = g_wnd->prefs.ai_top_p;
-    pending_req.top_k = g_wnd->prefs.ai_top_k;
-    pending_req.cache_prompt = g_wnd->prefs.ai_cache_prompt;
-    pending_req.slot_id = g_wnd->prefs.ai_slot_id;
-    pending_req.host = g_wnd->prefs.ai_host;
-    pending_req.port = g_wnd->prefs.ai_port;
+    if (!build_request_text(pending.prefix, pending.suffix, pending.anchor_pos)) return false;
+    pending.serial = next_request_serial();
+    pending.system_prompt = g_wnd->prefs.ai_system_prompt;
+    pending.model_path = g_wnd->prefs.model_path;
+    pending.launch_path = g_wnd->prefs.ai_launch_path;
+    pending.endpoint_mode = g_wnd->prefs.ai_endpoint_mode;
+    pending.max_chars = g_wnd->prefs.max_suggestion_chars;
+    pending.timeout_ms = g_wnd->prefs.ai_timeout_ms;
+    pending.context_length = g_wnd->prefs.ai_context_length;
+    pending.temperature = g_wnd->prefs.ai_temperature;
+    pending.top_p = g_wnd->prefs.ai_top_p;
+    pending.top_k = g_wnd->prefs.ai_top_k;
+    pending.cache_prompt = g_wnd->prefs.ai_cache_prompt;
+    pending.slot_id = g_wnd->prefs.ai_slot_id;
+    pending.host = g_wnd->prefs.ai_host;
+    pending.port = g_wnd->prefs.ai_port;
     return true;
 }
 
@@ -413,9 +505,9 @@ bool autocomp_lan_ai::run_active_request(ai_result &res)
     llama_client client;
     ai_request req;
 
-    pthread_mutex_lock(mutex());
-    req = active_req;
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_lock(&lock);
+    req = active;
+    pthread_mutex_unlock(&lock);
 
     res.serial = req.serial;
     res.anchor_pos = req.anchor_pos;
@@ -423,24 +515,19 @@ bool autocomp_lan_ai::run_active_request(ai_result &res)
     return client.request_completion(req, res);
 }
 
-const char* autocomp_lan_ai::ai_label() const
-{
-    return "AI";
-}
-
 void autocomp_lan_ai::activate_request_locked()
 {
-    active_req = pending_req;
+    active = pending;
 }
 
 void autocomp_lan_ai::queue_request_locked()
 {
-    queued_req = pending_req;
+    queued = pending;
 }
 
 void autocomp_lan_ai::load_queued_request_locked()
 {
-    active_req = queued_req;
+    active = queued;
 }
 
 autocomp_emb_ai::~autocomp_emb_ai()
@@ -450,26 +537,27 @@ autocomp_emb_ai::~autocomp_emb_ai()
 
 bool autocomp_emb_ai::build_request()
 {
-    if (!build_request_text(pending_req.prefix, pending_req.suffix, pending_req.anchor_pos)) return false;
-    pending_req.serial = next_request_serial();
-    pending_req.model_path = g_wnd->prefs.model_path;
-    pending_req.max_chars = g_wnd->prefs.max_suggestion_chars;
-    pending_req.context_length = g_wnd->prefs.ai_context_length;
-    pending_req.top_k = g_wnd->prefs.ai_top_k;
-    pending_req.top_p = g_wnd->prefs.ai_top_p;
-    pending_req.temperature = g_wnd->prefs.ai_temperature;
-    pending_req.cache_prompt = g_wnd->prefs.ai_cache_prompt;
+    if (!build_request_text(pending.prefix, pending.suffix, pending.anchor_pos)) return false;
+    pending.serial = next_request_serial();
+    pending.model_path = g_wnd->prefs.model_path;
+    pending.max_chars = g_wnd->prefs.max_suggestion_chars;
+    pending.context_length = g_wnd->prefs.ai_context_length;
+    pending.top_k = g_wnd->prefs.ai_top_k;
+    pending.top_p = g_wnd->prefs.ai_top_p;
+    pending.temperature = g_wnd->prefs.ai_temperature;
+    pending.cache_prompt = g_wnd->prefs.ai_cache_prompt;
+    pending.tquant = g_wnd->prefs.ai_tq;
     return true;
 }
 
 bool autocomp_emb_ai::run_active_request(ai_result &res)
 {
-    emb_ai_request req;
-    emb_ai_result er;
+    ai_request req;
+    ai_result er;
 
-    pthread_mutex_lock(mutex());
-    req = active_req;
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_lock(&lock);
+    req = active;
+    pthread_mutex_unlock(&lock);
 
     res.serial = req.serial;
     res.anchor_pos = req.anchor_pos;
@@ -483,37 +571,34 @@ bool autocomp_emb_ai::run_active_request(ai_result &res)
     return true;
 }
 
-const char* autocomp_emb_ai::ai_label() const
-{
-    return "Embedded AI";
-}
-
 void autocomp_emb_ai::activate_request_locked()
 {
-    active_req = pending_req;
+    active = pending;
 }
 
 void autocomp_emb_ai::queue_request_locked()
 {
-    queued_req = pending_req;
+    queued = pending;
 }
 
 void autocomp_emb_ai::load_queued_request_locked()
 {
-    active_req = queued_req;
+    active = queued;
 }
 
 void autocomp_emb_ai::on_cancel_pending_backend()
 {
     engine.request_stop();
+    g_wnd->update_ai_usage(0, 0);
 }
 
 void autocomp_emb_ai::on_preferences_changed_backend()
 {
-    pthread_mutex_lock(mutex());
-    if (busy_running()) unload_requested = true;
+    pthread_mutex_lock(&lock);
+    if (worker_running) unload_requested = true;
     else engine.unload();
-    pthread_mutex_unlock(mutex());
+    pthread_mutex_unlock(&lock);
+    g_wnd->update_ai_usage(0, 0);
 }
 
 void autocomp_emb_ai::on_worker_started_locked()
@@ -534,23 +619,26 @@ void autocomp_emb_ai::on_finish_locked(bool &backend_action)
 
 void autocomp_emb_ai::after_finish_unlocked(bool backend_action)
 {
-    if (backend_action) engine.unload();
+    if (!backend_action) return;
+    engine.unload();
+    g_wnd->update_ai_usage(0, 0);
 }
 
 void autocomp_emb_ai::poll_running()
 {
+    pthread_mutex_lock(&lock);
+    ai_request req = active;
+    int serial = last_serial;
+    pthread_mutex_unlock(&lock);
+
     std::string partial;
-    emb_ai_request req;
-    int serial;
-
-    pthread_mutex_lock(mutex());
-    req = active_req;
-    serial = current_serial();
-    pthread_mutex_unlock(mutex());
-
     engine.get_partial_text(partial);
+
+    int used = 0, ctx = 0;
+    engine.get_usage(used, ctx);
+    g_wnd->update_ai_usage(used, ctx);
     if (!partial.empty() && req.serial == serial && g_wnd->editor->insert_position() == req.anchor_pos && !g_wnd->suppress_autocomp) {
         publish(partial, req.anchor_pos, req.serial);
-        g_wnd->update_ai_status("Embedded AI generating");
+        g_wnd->update_ai_status("AI generating");
     }
 }

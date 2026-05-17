@@ -1,46 +1,118 @@
+#include <cerrno>
 #include <cctype>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
 #include <unistd.h>
 #include <netdb.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <arpa/inet.h>
 #include "common.h"
 #include "llama_client.h"
 
+static const char* const llama_errtab[LLAMA_NUM_ERRORS] = {
+    "",
+    "llama.cpp returned no text",
+    "cannot resolve AI host",
+    "cannot connect to llama.cpp server",
+    "failed to send AI request",
+    "AI server timed out",
+    "failed to read AI response",
+    "bad HTTP response from AI server",
+    "AI server busy",
+    "AI server returned non-200 status",
+    "llama.cpp path is invalid",
+    "cannot start llama.cpp server",
+    "llama.cpp server exited early",
+    "llama.cpp server did not become ready",
+};
+
+static int srv_pid = 0;
+
+static bool can_launch_local(const ai_request &req)
+{
+    return !req.model_path.empty() && !req.launch_path.empty();
+}
+
+static bool can_connect_port(const std::string &host, int port)
+{
+    char port_buf[HTTP_PORT_BUF_SIZE];
+    struct addrinfo hints;
+    struct addrinfo* res = 0;
+    int fd = -1;
+    bool ok = false;
+
+    snprintf(port_buf, sizeof(port_buf), "%d", port);
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host.c_str(), port_buf, &hints, &res) != 0) return false;
+
+    for (struct addrinfo* it = res; it; it = it->ai_next) {
+        fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+        if (fd < 0) continue;
+        if (connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+            ok = true;
+            close(fd);
+            break;
+        }
+        close(fd);
+    }
+    freeaddrinfo(res);
+    return ok;
+}
+
+void llama_client::stop_server()
+{
+    if (srv_pid <= 0) return;
+    kill(srv_pid, SIGTERM);
+    waitpid(srv_pid, NULL, 0);
+    srv_pid = 0;
+}
+
 bool llama_client::request_completion(const ai_request &req, ai_result &res)
 {
-    std::string body;
-    std::string error;
-    if (!post_json(req.host, req.port, "/completion", build_completion_json(req),
-            req.timeout_ms, body, error)) {
-        res.error = error;
-        return false;
-    }
-    res.text = parse_text_field(body, "content");
-    if (res.text.empty()) res.text = parse_text_field(body, "completion");
-    if (res.text.empty()) {
-        res.error = "llama.cpp returned no completion text";
-        return false;
-    }
-    return true;
+    return request_text(req, res, "/completion", build_completion_json(req), LLAMA_ERR_NO_TEXT);
 }
 
 bool llama_client::request_infill(const ai_request &req, ai_result &res)
 {
+    return request_text(req, res, "/infill", build_infill_json(req), LLAMA_ERR_NO_TEXT);
+}
+
+bool llama_client::request_text(const ai_request &req, ai_result &res, const char* path, const std::string &json, int empty_err)
+{
     std::string body;
-    std::string error;
-    if (!post_json(req.host, req.port, "/infill", build_infill_json(req),
-            req.timeout_ms, body, error)) {
-        res.error = error;
+    int error = LLAMA_ERR_NONE;
+    int retries = MAX(1, req.timeout_ms * 1000 / HTTP_RETRY_WAIT_US);
+
+    for (int i = 0; i < retries; i++) {
+        if (!ensure_server(req, error)) {
+            res.error = llama_errtab[error];
+            return false;
+        }
+        error = post_json(req.host, req.port, path, json, req.timeout_ms, body);
+        if (error == LLAMA_ERR_NONE) break;
+        if (error != LLAMA_ERR_BUSY && (!can_launch_local(req) || error != LLAMA_ERR_CONNECT)) {
+            res.error = llama_errtab[error];
+            return false;
+        }
+        if (i + 1 >= retries) break;
+        usleep(HTTP_RETRY_WAIT_US);
+    }
+    if (body.empty()) {
+        if (error == LLAMA_ERR_NONE) error = LLAMA_ERR_CONNECT;
+        res.error = llama_errtab[error];
         return false;
     }
     res.text = parse_text_field(body, "content");
     if (res.text.empty()) res.text = parse_text_field(body, "completion");
     if (res.text.empty()) {
-        res.error = "llama.cpp returned no infill text";
+        res.error = llama_errtab[empty_err];
         return false;
     }
     return true;
@@ -112,9 +184,57 @@ std::string llama_client::parse_text_field(const std::string &json, const char* 
     return json_unescape(value);
 }
 
-bool llama_client::post_json(const std::string &host, int port, const std::string &path, const std::string &body, int timeout_ms, std::string &response_body, std::string &error)
+bool llama_client::ensure_server(const ai_request &req, int &error)
 {
-    char port_buf[32];
+    int status = 0;
+    struct stat st;
+    std::string path = req.launch_path;
+
+    if (!can_launch_local(req)) return true;
+    if (srv_pid > 0 && waitpid(srv_pid, &status, WNOHANG) == srv_pid) srv_pid = 0;
+    if (srv_pid > 0) return true;
+    if (!stat(path.c_str(), &st) && S_ISDIR(st.st_mode)) path += "/llama-server";
+    if (access(path.c_str(), X_OK) != 0) {
+        error = LLAMA_ERR_BAD_PATH;
+        return false;
+    }
+
+    srv_pid = fork();
+    if (srv_pid < 0) {
+        srv_pid = 0;
+        error = LLAMA_ERR_START;
+        return false;
+    }
+    if (!srv_pid) {
+        char port[32];
+        char ctx[32];
+        char slots[32];
+
+        snprintf(port, sizeof(port), "%d", req.port);
+        snprintf(ctx, sizeof(ctx), "%d", req.context_length);
+        snprintf(slots, sizeof(slots), "%d", MAX(1, req.slot_id + 1));
+        execl(path.c_str(), path.c_str(), "-m", req.model_path.c_str(), "--port", port, "-c", ctx, "--host", req.host.c_str(), "--slots", "--parallel", slots, (char*)NULL);
+        _exit(127);
+    }
+
+    for (int i = 0; i < HTTP_SRV_READY_POLLS; i++) {
+        if (waitpid(srv_pid, &status, WNOHANG) == srv_pid) {
+            srv_pid = 0;
+            error = LLAMA_ERR_EARLY_EXIT;
+            return false;
+        }
+        if (can_connect_port(req.host, req.port)) return true;
+        usleep(HTTP_SRV_READY_WAIT_US);
+    }
+
+    error = LLAMA_ERR_NOT_READY;
+    stop_server();
+    return false;
+}
+
+int llama_client::post_json(const std::string &host, int port, const std::string &path, const std::string &body, int timeout_ms, std::string &response_body)
+{
+    char port_buf[HTTP_PORT_BUF_SIZE];
     snprintf(port_buf, sizeof(port_buf), "%d", port);
 
     struct addrinfo hints;
@@ -123,10 +243,7 @@ bool llama_client::post_json(const std::string &host, int port, const std::strin
     hints.ai_socktype = SOCK_STREAM;
 
     struct addrinfo* res = 0;
-    if (getaddrinfo(host.c_str(), port_buf, &hints, &res) != 0) {
-        error = "cannot resolve AI host";
-        return false;
-    }
+    if (getaddrinfo(host.c_str(), port_buf, &hints, &res) != 0) return LLAMA_ERR_RESOLVE_HOST;
 
     int fd = -1;
     for (struct addrinfo* it = res; it; it = it->ai_next) {
@@ -134,8 +251,9 @@ bool llama_client::post_json(const std::string &host, int port, const std::strin
         if (fd < 0) continue;
 
         struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        int ms = MAX(timeout_ms, HTTP_MIN_TIMEOUT_MS);
+        tv.tv_sec = ms / 1000;
+        tv.tv_usec = (ms % 1000) * 1000;
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
@@ -145,10 +263,7 @@ bool llama_client::post_json(const std::string &host, int port, const std::strin
     }
     freeaddrinfo(res);
 
-    if (fd < 0) {
-        error = "cannot connect to llama.cpp server";
-        return false;
-    }
+    if (fd < 0) return LLAMA_ERR_CONNECT;
 
     std::ostringstream request;
     request << "POST " << path << " HTTP/1.1\r\n";
@@ -164,8 +279,7 @@ bool llama_client::post_json(const std::string &host, int port, const std::strin
         ssize_t rc = send(fd, req_text.data() + sent, req_text.size() - sent, 0);
         if (rc <= 0) {
             close(fd);
-            error = "failed to send AI request";
-            return false;
+            return LLAMA_ERR_SEND;
         }
         sent += (size_t)rc;
     }
@@ -177,24 +291,21 @@ bool llama_client::post_json(const std::string &host, int port, const std::strin
         if (rc == 0) break;
         if (rc < 0) {
             close(fd);
-            error = "failed to read AI response";
-            return false;
+            return (errno == EAGAIN || errno == EWOULDBLOCK) ? LLAMA_ERR_TIMEOUT : LLAMA_ERR_READ;
         }
         raw.append(buf, (size_t)rc);
     }
     close(fd);
 
     size_t header_end = raw.find("\r\n\r\n");
-    if (header_end == std::string::npos) {
-        error = "bad HTTP response from AI server";
-        return false;
-    }
+    if (header_end == std::string::npos) return LLAMA_ERR_BAD_HTTP;
 
     std::string header = raw.substr(0, header_end);
     response_body = raw.substr(header_end + 4);
     if (header.find("200") == std::string::npos) {
-        error = "AI server returned non-200 status";
-        return false;
+        if (header.find("503") != std::string::npos) return LLAMA_ERR_BUSY;
+        return LLAMA_ERR_STATUS;
     }
-    return true;
+
+    return LLAMA_ERR_NONE;
 }

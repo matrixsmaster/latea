@@ -3,6 +3,17 @@
 #include <string>
 #include <stdint.h>
 
+#define TITLE "Latea"
+#define VERSION "0.2.7"
+#define COPYRIGHT "(c) Dmitry 'sciloaf' Solovyev, 2026"
+#define ABOUT_TEXT TITLE " v" VERSION "\n\nA simple text editor with powerful autocomplete.\n\n" COPYRIGHT
+#define APP_ICON_FILE "/usr/share/latea/latea.png"
+#define CAPABILITIES "AVX2 Q8 Q1/G QnK FlashAttn TurboQuant"
+#define ARCHITECTURES "LLAMA QWEN3 BERT"
+
+#define FONT_SIZE_DEFAULTS {8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32}
+//#define EDITOR_WINDOWS {ui->main_window, ui->find_window, ui->prefs_window, ui->font_window, ui->about_window, ui->stats_window, ui->models_window}
+
 #define NUMITEMS(X) (sizeof(X) / sizeof((X)[0]))
 #define MIN(A,B) (((A) < (B))? (A) : (B))
 #define MAX(A,B) (((A) > (B))? (A) : (B))

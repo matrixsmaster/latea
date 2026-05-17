@@ -7,16 +7,13 @@
 struct edit_action
 {
     int pos;
-    std::string removed;
-    std::string inserted;
-    int cursor_before;
-    int cursor_after;
+    std::string removed, inserted;
+    int cursor_before, cursor_after;
 };
 
 struct edit_history
 {
-    std::vector<edit_action> undo_stack;
-    std::vector<edit_action> redo_stack;
+    std::vector<edit_action> undo_stack, redo_stack;
     bool replaying;
     double last_edit_time;
 

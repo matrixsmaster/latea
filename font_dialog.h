@@ -15,8 +15,8 @@ struct font_dialog
     Fl_Color selected_ghost_color;
     Fl_Color selected_bg_color;
     Fl_Color selected_selection_color;
-    Fl_Color selected_linenumber_bg_color;
-    Fl_Color selected_linenumber_fg_color;
+    Fl_Font preview_font;
+    bool syncing;
 
     font_dialog();
 
@@ -28,8 +28,6 @@ struct font_dialog
     void choose_ghost_color();
     void choose_background_color();
     void choose_selection_color();
-    void choose_linenumber_bg_color();
-    void choose_linenumber_fg_color();
     void accept();
 };
 

@@ -6,12 +6,13 @@
 #include <FL/Fl_Text_Editor.H>
 #include <FL/Fl_Text_Buffer.H>
 #include <FL/Enumerations.H>
+#include <FL/Fl_PNG_Image.H>
 #include "prefs.h"
+#include "prefs_dlg.h"
 #include "history.h"
 #include "autocomp.h"
 
-#define EDITOR_TITLE "Latea"
-#define FONT_SIZE_DEFAULTS {8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32}
+#define EDITOR_SCROLL_ATTEMPTS 2
 
 class LateaUI;
 struct font_dialog;
@@ -19,8 +20,10 @@ struct font_dialog;
 struct suggestion_state
 {
     std::string text;
+    std::vector<std::string> vars;
     int anchor_pos;
     int request_id;
+    int var_idx;
     bool visible;
 
     void clear();
@@ -33,12 +36,17 @@ public:
 
     void draw();
     int handle(int event);
+
+private:
+    int scrolled = 0;
 };
 
 struct latea
 {
     LateaUI* ui;
     latea_editor* editor;
+    std::string filename;
+    bool changed;
     Fl_Text_Buffer* textbuf;
     app_prefs prefs;
     edit_history history;
@@ -46,17 +54,18 @@ struct latea
     autocomp_dict cmpt_dict;
     autocomp_file cmpt_file;
     autocomp_lan_ai cmpt_ai;
-    autocomp_emb_ai cmpt_embedded_ai;
+    autocomp_emb_ai cmpt_emb_ai;
     suggestion_state suggest;
-    std::string filename;
-    bool changed;
-    int suppress_history;
-    int suppress_autocomp;
+    int suppress_history, suppress_autocomp;
     Fl_Font current_font;
     Fl_Fontsize current_size;
-    int line_count_cache;
-    int line_number_digits;
+    int line_count_cache, line_number_digits;
     bool find_selected;
+    std::string ai_status_text;
+    int ai_used_toks, ai_used_ctx;
+    int text_rev;
+    Fl_PNG_Image* app_icon;
+    Fl_Image* about_img;
 
     latea();
 
@@ -72,6 +81,7 @@ struct latea
     void choose_font();
     void browse_dictionary_path();
     void browse_model_path();
+    void browse_llama_path();
     void find_next();
     void replace_next();
     void replace_all();
@@ -81,17 +91,24 @@ struct latea
     void select_autocomp();
     void set_word_wrap(bool enabled);
     void set_line_numbers(bool enabled);
+    void show_stats();
+    void reset_autocomp();
     void set_suggestion(const std::string &text, int anchor_pos, int request_id = 0);
+    void set_suggestion_list(std::vector<std::string> vars, int var_idx, int anchor_pos, int request_id = 0);
     void clear_suggestion();
+    void prev_suggestion();
+    void next_suggestion();
     void accept_suggestion_full();
     void accept_suggestion_word();
     void record_buffer_change(int pos, int inserted, int deleted, const char* deleted_text);
     void set_changed(bool value);
-    void sync_ui_to_prefs();
-    void sync_prefs_from_ui();
+    void update_caret_pos();
+    void update_ai_usage(int used, int ctx);
+    void refresh_ai_status();
     void close_main_window();
     bool find_next_match(const char* needle, int start_pos, int &match_pos);
     void reset_loaded_document_state(const char* status_text);
+    int count_tokens();
 };
 
 extern latea* g_wnd;

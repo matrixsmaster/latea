@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <vector>
+#include "common.h"
 #include "emb_ai.h"
 
 using namespace std;
@@ -16,7 +17,7 @@ emb_ai::~emb_ai()
     pthread_mutex_destroy(&partial_lock);
 }
 
-bool emb_ai::complete(const emb_ai_request &req, emb_ai_result &res)
+bool emb_ai::complete(const ai_request &req, ai_result &res)
 {
     int ntoks = 0;
     int shared = 0;
@@ -38,6 +39,7 @@ bool emb_ai::complete(const emb_ai_request &req, emb_ai_result &res)
         state = base;
         if (!feed_toks(toks, 0, res.error)) return false;
     }
+    set_usage(state.pos, state.m.n_context);
 
     if (req.cache_prompt) {
         cached_toks = toks;
@@ -63,9 +65,14 @@ bool emb_ai::complete(const emb_ai_request &req, emb_ai_result &res)
         if (!tok || tok == state.m.tok_eos) break;
 
         string piece = tok_to_str(&state, tok);
+        string prev = sanitize_suggestion(res.text, req.max_chars);
+
         res.text += piece;
+        if (sanitize_suggestion(res.text, req.max_chars) == prev) break;
+
         set_partial_text(res.text);
         inference(&state,tok);
+        set_usage(state.pos, state.m.n_context);
         ntoks++;
     }
     return true;
@@ -90,6 +97,7 @@ void emb_ai::unload()
     loaded_model_path.clear();
     clear_cache();
     set_partial_text("");
+    set_usage(0, 0);
 }
 
 void emb_ai::get_partial_text(std::string &text)
@@ -99,8 +107,18 @@ void emb_ai::get_partial_text(std::string &text)
     pthread_mutex_unlock(&partial_lock);
 }
 
-bool emb_ai::ensure_model(const emb_ai_request &req, string &error)
+void emb_ai::get_usage(int &used, int &ctx)
 {
+    pthread_mutex_lock(&partial_lock);
+    used = used_toks;
+    ctx = used_ctx;
+    pthread_mutex_unlock(&partial_lock);
+}
+
+bool emb_ai::ensure_model(const ai_request &req, string &error)
+{
+    if (loaded) return true;
+
     if (req.model_path.empty()) {
         error = "Embedded AI model path is empty";
         return false;
@@ -113,18 +131,10 @@ bool emb_ai::ensure_model(const emb_ai_request &req, string &error)
         initialized = true;
     }
 
-    if (loaded && loaded_model_path == req.model_path && loaded_context == req.context_length) return true;
-
-    if (loaded) {
-        state.m.close_mmap();
-        loaded = false;
-        clear_cache();
-    }
-
     state = model_state();
     state.model_fn = req.model_path;
     state.u_context = req.context_length;
-    //state.tq = true;
+    state.tq = req.tquant;
     if (!state.m.open_mmap(state.model_fn.c_str())) {
         error = "Embedded AI cannot open model";
         return false;
@@ -147,6 +157,7 @@ bool emb_ai::ensure_model(const emb_ai_request &req, string &error)
     loaded_model_path = req.model_path;
     loaded_context = req.context_length;
     loaded = true;
+
     return true;
 }
 
@@ -175,5 +186,13 @@ void emb_ai::set_partial_text(const std::string &text)
 {
     pthread_mutex_lock(&partial_lock);
     partial_text = text;
+    pthread_mutex_unlock(&partial_lock);
+}
+
+void emb_ai::set_usage(int used, int ctx)
+{
+    pthread_mutex_lock(&partial_lock);
+    used_toks = used;
+    used_ctx = ctx;
     pthread_mutex_unlock(&partial_lock);
 }

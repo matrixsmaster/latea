@@ -2,10 +2,16 @@
 
 #include <string>
 #include <stdint.h>
+#include <map>
+#include <vector>
 
 #define CONFIG_PATH ".latea"
 #define CONFIG_FILE "latea.cfg"
 #define CONFIG_MODE 0775
+#define DEF_TEXT_FONT FL_COURIER
+#define DEF_TEXT_SIZE 16
+#define PREFS_GLOBAL "_Global_"
+#define PREFS_MAIN "Latea"
 
 enum {
     AUTOCOMPLETE_DISABLED = 0,
@@ -22,6 +28,8 @@ enum {
 
 struct app_prefs
 {
+    int win_w, win_h;
+    std::string last_preset;
     std::string dict_path;
     int autocomp_mode;
     bool cont_autocomp;
@@ -33,10 +41,9 @@ struct app_prefs
     uint32_t ghost_color;
     uint32_t bg_color;
     uint32_t sel_color;
-    uint32_t line_bgcol;
-    uint32_t line_fgcol;
     bool word_wrap;
     bool line_numbers;
+    std::string ai_launch_path;
     std::string ai_host;
     int ai_port;
     int ai_endpoint_mode;
@@ -51,8 +58,16 @@ struct app_prefs
     int ai_top_k;
     bool ai_cache_prompt;
     int ai_slot_id;
+    bool ai_tq;
+
+    std::map<std::string, std::string> sets;
 
     void set_defaults();
     void load();
     void save() const;
+    void load_item(std::string key, std::string val);
+    std::string save_all() const;
+    void use_preset(const std::string &name);
+    void store_preset(const std::string &name);
+    void del_preset(const std::string &name);
 };

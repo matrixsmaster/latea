@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Latea
+Comment=A text editor with a single feature
+Exec=/usr/bin/latea %F
+Icon=/usr/share/latea/latea.png
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;
+MimeType=text/plain;
