@@ -76,46 +76,41 @@ void llama_client::stop_server()
 
 bool llama_client::request_completion(const ai_request &req, ai_result &res)
 {
-    return request_text(req, res, "/completion", build_completion_json(req), LLAMA_ERR_NO_TEXT);
+    int err = request_text(req, res, "/completion", build_completion_json(req), LLAMA_ERR_NO_TEXT);
+    res.error = llama_errtab[err];
+    return (err == LLAMA_ERR_NONE);
 }
 
 bool llama_client::request_infill(const ai_request &req, ai_result &res)
 {
-    return request_text(req, res, "/infill", build_infill_json(req), LLAMA_ERR_NO_TEXT);
+    int err = request_text(req, res, "/infill", build_infill_json(req), LLAMA_ERR_NO_TEXT);
+    res.error = llama_errtab[err];
+    return (err == LLAMA_ERR_NONE);
 }
 
-bool llama_client::request_text(const ai_request &req, ai_result &res, const char* path, const std::string &json, int empty_err)
+int llama_client::request_text(const ai_request &req, ai_result &res, const char* path, const std::string &json, int empty_err)
 {
     std::string body;
-    int error = LLAMA_ERR_NONE;
+    int err = LLAMA_ERR_NONE;
     int retries = MAX(1, req.timeout_ms * 1000 / HTTP_RETRY_WAIT_US);
 
     for (int i = 0; i < retries; i++) {
-        if (!ensure_server(req, error)) {
-            res.error = llama_errtab[error];
-            return false;
-        }
-        error = post_json(req.host, req.port, path, json, req.timeout_ms, body);
-        if (error == LLAMA_ERR_NONE) break;
-        if (error != LLAMA_ERR_BUSY && (!can_launch_local(req) || error != LLAMA_ERR_CONNECT)) {
-            res.error = llama_errtab[error];
-            return false;
-        }
+        err = ensure_server(req);
+        if (err != LLAMA_ERR_NONE) return err;
+        err = post_json(req.host, req.port, path, json, req.timeout_ms, body);
+        if (err == LLAMA_ERR_NONE) break;
+        if (err != LLAMA_ERR_BUSY && (!can_launch_local(req) || err != LLAMA_ERR_CONNECT)) return err;
         if (i + 1 >= retries) break;
         usleep(HTTP_RETRY_WAIT_US);
     }
     if (body.empty()) {
-        if (error == LLAMA_ERR_NONE) error = LLAMA_ERR_CONNECT;
-        res.error = llama_errtab[error];
-        return false;
+        if (err == LLAMA_ERR_NONE) err = LLAMA_ERR_CONNECT;
+        return err;
     }
     res.text = parse_text_field(body, "content");
     if (res.text.empty()) res.text = parse_text_field(body, "completion");
-    if (res.text.empty()) {
-        res.error = llama_errtab[empty_err];
-        return false;
-    }
-    return true;
+    if (res.text.empty()) return empty_err;
+    return LLAMA_ERR_NONE;
 }
 
 std::string llama_client::build_completion_json(const ai_request &req) const
@@ -184,26 +179,22 @@ std::string llama_client::parse_text_field(const std::string &json, const char* 
     return json_unescape(value);
 }
 
-bool llama_client::ensure_server(const ai_request &req, int &error)
+int llama_client::ensure_server(const ai_request &req)
 {
     int status = 0;
     struct stat st;
     std::string path = req.launch_path;
 
-    if (!can_launch_local(req)) return true;
+    if (!can_launch_local(req)) return LLAMA_ERR_NONE;
     if (srv_pid > 0 && waitpid(srv_pid, &status, WNOHANG) == srv_pid) srv_pid = 0;
-    if (srv_pid > 0) return true;
+    if (srv_pid > 0) return LLAMA_ERR_NONE;
     if (!stat(path.c_str(), &st) && S_ISDIR(st.st_mode)) path += "/llama-server";
-    if (access(path.c_str(), X_OK) != 0) {
-        error = LLAMA_ERR_BAD_PATH;
-        return false;
-    }
+    if (access(path.c_str(), X_OK) != 0) return LLAMA_ERR_BAD_PATH;
 
     srv_pid = fork();
     if (srv_pid < 0) {
         srv_pid = 0;
-        error = LLAMA_ERR_START;
-        return false;
+        return LLAMA_ERR_START;
     }
     if (!srv_pid) {
         char port[32];
@@ -220,16 +211,14 @@ bool llama_client::ensure_server(const ai_request &req, int &error)
     for (int i = 0; i < HTTP_SRV_READY_POLLS; i++) {
         if (waitpid(srv_pid, &status, WNOHANG) == srv_pid) {
             srv_pid = 0;
-            error = LLAMA_ERR_EARLY_EXIT;
-            return false;
+            return LLAMA_ERR_EARLY_EXIT;
         }
-        if (can_connect_port(req.host, req.port)) return true;
+        if (can_connect_port(req.host, req.port)) return LLAMA_ERR_NONE;
         usleep(HTTP_SRV_READY_WAIT_US);
     }
 
-    error = LLAMA_ERR_NOT_READY;
     stop_server();
-    return false;
+    return LLAMA_ERR_NOT_READY;
 }
 
 int llama_client::post_json(const std::string &host, int port, const std::string &path, const std::string &body, int timeout_ms, std::string &response_body)

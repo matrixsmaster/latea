@@ -53,9 +53,9 @@ struct llama_client
 
     bool request_completion(const ai_request &req, ai_result &res);
     bool request_infill(const ai_request &req, ai_result &res);
-    bool ensure_server(const ai_request &req, int &error);
+    int ensure_server(const ai_request &req);
 
-    bool request_text(const ai_request &req, ai_result &res, const char* path, const std::string &json, int empty_err);
+    int request_text(const ai_request &req, ai_result &res, const char* path, const std::string &json, int empty_err);
     int post_json(const std::string &host, int port, const std::string &path, const std::string &body, int timeout_ms, std::string &response_body);
     std::string build_completion_json(const ai_request &req) const;
     std::string build_infill_json(const ai_request &req) const;

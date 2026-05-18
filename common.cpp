@@ -88,7 +88,7 @@ string sanitize_suggestion(const string &text, int max_chars)
         out += (char)c;
     }
     out = trim_newlines(out);
-    if ((int)out.size() > max_chars) out.erase(max_chars);
+    if (max_chars > 0 && (int)out.size() > max_chars) out.erase(max_chars);
     return out;
 }
 

@@ -9,6 +9,8 @@
 #define AUTOCOMPLETE_DELAY_SEC 0.18
 #define AUTOCOMPLETE_POLL_SEC 0.05
 
+enum { W_IDLE, W_RUNNING, W_DONE, W_GONE };
+
 struct autocomp
 {
     double due_time = 0;
@@ -57,7 +59,8 @@ struct autocomp_ai : autocomp
     pthread_mutex_t lock;
     pthread_t worker;
     ai_result finished_res;
-    bool worker_running, worker_done, worker_ok, worker_joined;
+    int wstate;
+    bool worker_ok;
     bool poll_active, have_queued;
     int last_serial, next_serial;
     ai_request pending, active, queued;

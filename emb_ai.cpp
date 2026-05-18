@@ -65,10 +65,10 @@ bool emb_ai::complete(const ai_request &req, ai_result &res)
         if (!tok || tok == state.m.tok_eos) break;
 
         string piece = tok_to_str(&state, tok);
-        string prev = sanitize_suggestion(res.text, req.max_chars);
+        string prev = sanitize_suggestion(res.text, 0);
 
         res.text += piece;
-        if (sanitize_suggestion(res.text, req.max_chars) == prev) break;
+        if (sanitize_suggestion(res.text, 0) == prev) break;
 
         set_partial_text(res.text);
         inference(&state,tok);

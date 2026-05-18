@@ -441,9 +441,16 @@ void latea::replace_all()
     if (!needle || !needle[0]) return;
 
     int count = 0;
-    int pos = 0;
+    int cursor = editor->insert_position();
+    int pos = cursor;
     suppress_autocomp++;
     while (textbuf->search_forward(pos, needle, &pos)) {
+        textbuf->replace(pos, pos + (int)strlen(needle), replacement);
+        pos += (int)strlen(replacement);
+        count++;
+    }
+    pos = 0;
+    while (textbuf->search_forward(pos, needle, &pos) && pos < cursor) {
         textbuf->replace(pos, pos + (int)strlen(needle), replacement);
         pos += (int)strlen(replacement);
         count++;
@@ -620,7 +627,9 @@ void latea::reset_autocomp()
 
 void latea::set_suggestion(const string &text, int anchor_pos, int request_id)
 {
-    string clean = sanitize_suggestion(text, prefs.max_suggestion_chars);
+    int max_chars = prefs.max_suggestion_chars;
+    if (prefs.autocomp_mode == AUTOCOMPLETE_AI || prefs.autocomp_mode == AUTOCOMPLETE_EMBEDDED_AI) max_chars = 0;
+    string clean = sanitize_suggestion(text, max_chars);
     if (clean.empty()) {
         clear_suggestion();
         return;
@@ -651,9 +660,11 @@ void latea::set_suggestion(const string &text, int anchor_pos, int request_id)
 
 void latea::set_suggestion_list(vector<string> vars, int var_idx, int anchor_pos, int request_id)
 {
+    int max_chars = prefs.max_suggestion_chars;
+    if (prefs.autocomp_mode == AUTOCOMPLETE_AI || prefs.autocomp_mode == AUTOCOMPLETE_EMBEDDED_AI) max_chars = 0;
     suggest.clear();
     for (size_t i = 0; i < vars.size(); i++) {
-        string clean = sanitize_suggestion(vars[i], prefs.max_suggestion_chars);
+        string clean = sanitize_suggestion(vars[i], max_chars);
         if (!clean.empty()) suggest.vars.push_back(clean);
     }
     if (suggest.vars.empty()) {

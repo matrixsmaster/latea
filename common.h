@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define TITLE "Latea"
-#define VERSION "0.2.7"
+#define VERSION "0.2.9"
 #define COPYRIGHT "(c) Dmitry 'sciloaf' Solovyev, 2026"
 #define ABOUT_TEXT TITLE " v" VERSION "\n\nA simple text editor with powerful autocomplete.\n\n" COPYRIGHT
 #define APP_ICON_FILE "/usr/share/latea/latea.png"

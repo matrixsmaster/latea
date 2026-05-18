@@ -227,24 +227,21 @@ bool autocomp_file::move_suggestion(int dir)
 static void poll_cb(void *data)
 {
     autocomp_ai *self = (autocomp_ai *)data;
-    bool done;
-    bool running;
+    int wstate;
     bool queued;
 
     pthread_mutex_lock(&self->lock);
-    done = self->worker_done;
-    running = self->worker_running;
-    queued = self->have_queued;
+    wstate = self->wstate;
     pthread_mutex_unlock(&self->lock);
 
-    if (running && !done) self->poll_running();
-    if (done) self->finish_worker();
+    if (wstate == W_RUNNING) self->poll_running();
+    if (wstate == W_DONE || wstate == W_GONE) self->finish_worker();
 
     pthread_mutex_lock(&self->lock);
-    running = self->worker_running;
+    wstate = self->wstate;
     queued = self->have_queued;
     pthread_mutex_unlock(&self->lock);
-    if (running || queued) {
+    if (wstate != W_IDLE || queued) {
         Fl::repeat_timeout(AUTOCOMPLETE_POLL_SEC, poll_cb, data);
         return;
     }
@@ -254,10 +251,8 @@ static void poll_cb(void *data)
 autocomp_ai::autocomp_ai()
 {
     pthread_mutex_init(&lock, NULL);
-    worker_running = false;
-    worker_done = false;
+    wstate = W_IDLE;
     worker_ok = false;
-    worker_joined = true;
     poll_active = false;
     have_queued = false;
     next_serial = 0;
@@ -268,7 +263,7 @@ autocomp_ai::~autocomp_ai()
 {
     cancel_timer();
     if (poll_active) Fl::remove_timeout(poll_cb, this);
-    if (worker_running && !worker_joined) pthread_join(worker, NULL);
+    if (wstate != W_IDLE) pthread_join(worker, NULL);
     pthread_mutex_destroy(&lock);
 }
 
@@ -317,7 +312,7 @@ void autocomp_ai::cancel_pending()
 
 bool autocomp_ai::is_busy() const
 {
-    return worker_running || have_queued;
+    return wstate != W_IDLE || have_queued;
 }
 
 bool autocomp_ai::move_suggestion(int dir)
@@ -385,9 +380,12 @@ static void* worker_main(void* data)
     pthread_mutex_lock(&self->lock);
     self->finished_res = res;
     self->worker_ok = ok;
-    self->worker_done = true;
+    self->wstate = W_DONE;
     pthread_mutex_unlock(&self->lock);
     Fl::awake();
+    pthread_mutex_lock(&self->lock);
+    self->wstate = W_GONE;
+    pthread_mutex_unlock(&self->lock);
     return NULL;
 }
 
@@ -396,17 +394,14 @@ void autocomp_ai::start_worker()
 {
     pthread_mutex_lock(&lock);
     activate_request_locked();
-    worker_done = false;
+    wstate = W_RUNNING;
     worker_ok = false;
-    worker_running = true;
-    worker_joined = false;
     on_worker_started_locked();
     pthread_mutex_unlock(&lock);
 
     if (pthread_create(&worker, NULL, worker_main, this) != 0) {
         pthread_mutex_lock(&lock);
-        worker_running = false;
-        worker_joined = true;
+        wstate = W_IDLE;
         pthread_mutex_unlock(&lock);
         g_wnd->update_ai_status("AI worker start failed");
         return;
@@ -421,7 +416,7 @@ void autocomp_ai::start_worker()
 
 void autocomp_ai::queue_or_start()
 {
-    if (!worker_running) {
+    if (wstate == W_IDLE) {
         start_worker();
         return;
     }
@@ -440,20 +435,22 @@ void autocomp_ai::finish_worker()
     bool stale = false;
     ai_result res;
     bool ok = false;
-    int join_rc = 0;
+    int wstate;
 
     pthread_mutex_lock(&lock);
     ok = worker_ok;
     res = finished_res;
-    if (!worker_joined) {
+    wstate = this->wstate;
+    if (wstate == W_DONE) {
         pthread_mutex_unlock(&lock);
-        join_rc = pthread_tryjoin_np(worker, NULL);
-        if (join_rc == EBUSY) return;
-        pthread_mutex_lock(&lock);
-        worker_joined = join_rc == 0 || join_rc == ESRCH;
+        return;
     }
-    worker_running = false;
-    worker_done = false;
+    if (wstate == W_GONE) {
+        pthread_mutex_unlock(&lock);
+        pthread_join(worker, NULL);
+        pthread_mutex_lock(&lock);
+    }
+    this->wstate = W_IDLE;
     stale = res.serial != last_serial;
     if (have_queued) {
         load_queued_request_locked();
@@ -595,7 +592,7 @@ void autocomp_emb_ai::on_cancel_pending_backend()
 void autocomp_emb_ai::on_preferences_changed_backend()
 {
     pthread_mutex_lock(&lock);
-    if (worker_running) unload_requested = true;
+    if (wstate != W_IDLE) unload_requested = true;
     else engine.unload();
     pthread_mutex_unlock(&lock);
     g_wnd->update_ai_usage(0, 0);
