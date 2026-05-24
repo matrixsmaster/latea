@@ -26,9 +26,9 @@ That last part is the feature. The only feature.
   - disabled
   - dictionary file
   - current file
-  - Markov model
   - AI connector
   - embedded AI engine
+  - Markov model
 - Keep multiple autocomplete candidates and let you move through them back and forth
 - Generate Markov autocomplete suggestions from the current document itself
 - Accept suggestions inline while staying in the normal editing flow
@@ -85,14 +85,6 @@ Suggestions are taken from a user-supplied word list. This is useful for keyword
 
 Suggestions are based on words already present in the open document. This is useful for programming identifiers, repeated names, project-specific words, and general consistency.
 
-### Markov model
-
-Suggestions are generated from a small Markov model trained from the current document text. No cloud, no model file, no wizard. It simply looks at local token transitions in the text you already wrote and guesses what usually follows what.
-
-This mode can generate multiple alternative continuations, so `Up` and `Down` work the same way as in other multi-candidate modes.
-
-The `Stop on punctuation` preference decides whether Markov suggestions politely stop at punctuation instead of trying to finish the entire paragraph like a caffeinated parrot.
-
 ### AI connector
 
 Suggestions come from a local `llama.cpp`-style server. This allows Latea to generate longer completions, including prose continuation or source code.
@@ -118,6 +110,14 @@ This is useful when you want:
 The embedded path includes prompt caching support, so repeated completion requests can reuse context where possible. That matters because autocomplete should feel snappy and helpful.
 
 While embedded generation is running, Latea can show partial progress in the status area and track exact token/context usage. This is mostly so you know whether the model is thinking, sulking, or eating the entire context window with a tiny spoon.
+
+### Markov model
+
+Suggestions are generated from a small Markov model trained from the current document text. No cloud, no model file, no wizard. It simply looks at local token transitions in the text you already wrote and guesses what usually follows what.
+
+This mode can generate multiple alternative continuations, so `Up` and `Down` work the same way as in other multi-candidate modes.
+
+The `Stop on punctuation` preference decides whether Markov suggestions politely stop at punctuation instead of trying to finish the entire paragraph like a caffeinated parrot.
 
 ## Keyboard and editing flow
 
