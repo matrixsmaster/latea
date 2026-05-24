@@ -17,7 +17,7 @@ void app_prefs::set_defaults()
     dict_path.clear();
     autocomp_mode = AUTOCOMPLETE_DISABLED;
     cont_autocomp = false;
-    max_suggestion_chars = 80;
+    max_suggestion = 80;
     model_path.clear();
     text_font_name.clear();
     text_size = DEF_TEXT_SIZE;
@@ -43,6 +43,8 @@ void app_prefs::set_defaults()
     ai_cache_prompt = true;
     ai_slot_id = 0;
     ai_tq = false;
+    save_backup = false;
+    stop_punct = false;
 }
 
 static string config_dir()
@@ -60,7 +62,7 @@ void app_prefs::load_item(string key, string val)
     else if (key == "dict_path") dict_path = json_unescape(val);
     else if (key == "autocomp_mode") autocomp_mode = atoi(val.c_str());
     else if (key == "cont_autocomp") cont_autocomp = atoi(val.c_str()) != 0;
-    else if (key == "max_suggestion_chars") max_suggestion_chars = atoi(val.c_str());
+    else if (key == "max_suggestion") max_suggestion = atoi(val.c_str());
     else if (key == "model_path") model_path = json_unescape(val);
     else if (key == "text_font_name") text_font_name = json_unescape(val);
     else if (key == "text_size") text_size = atoi(val.c_str());
@@ -86,6 +88,8 @@ void app_prefs::load_item(string key, string val)
     else if (key == "ai_cache_prompt") ai_cache_prompt = atoi(val.c_str()) != 0;
     else if (key == "ai_slot_id") ai_slot_id = atoi(val.c_str());
     else if (key == "ai_tq") ai_tq = atoi(val.c_str()) != 0;
+    else if (key == "save_backup") save_backup = atoi(val.c_str()) != 0;
+    else if (key == "stop_punct") stop_punct = atoi(val.c_str()) != 0;
 }
 
 string app_prefs::save_all() const
@@ -98,7 +102,7 @@ string app_prefs::save_all() const
     out << "dict_path=" << json_escape(dict_path) << "\n";
     out << "autocomp_mode=" << autocomp_mode << "\n";
     out << "cont_autocomp=" << cont_autocomp << "\n";
-    out << "max_suggestion_chars=" << max_suggestion_chars << "\n";
+    out << "max_suggestion=" << max_suggestion << "\n";
     out << "model_path=" << json_escape(model_path) << "\n";
     out << "text_font_name=" << json_escape(text_font_name) << "\n";
     out << "text_size=" << text_size << "\n";
@@ -124,6 +128,8 @@ string app_prefs::save_all() const
     out << "ai_cache_prompt=" << ai_cache_prompt << "\n";
     out << "ai_slot_id=" << ai_slot_id << "\n";
     out << "ai_tq=" << ai_tq << "\n";
+    out << "save_backup=" << save_backup << "\n";
+    out << "stop_punct=" << stop_punct << "\n";
     return out.str();
 }
 

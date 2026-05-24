@@ -34,7 +34,7 @@ struct ai_request
     std::string system_prompt;
     std::string host, model_path, launch_path;
     int endpoint_mode;
-    int max_chars, timeout_ms, context_length;
+    int maxtoks, timeout_ms, context_length;
     float temperature, top_p;
     int top_k;
     int slot_id, port;

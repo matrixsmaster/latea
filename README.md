@@ -26,9 +26,11 @@ That last part is the feature. The only feature.
   - disabled
   - dictionary file
   - current file
+  - Markov model
   - AI connector
   - embedded AI engine
 - Keep multiple autocomplete candidates and let you move through them back and forth
+- Generate Markov autocomplete suggestions from the current document itself
 - Accept suggestions inline while staying in the normal editing flow
 - Run AI autocomplete through either a local `llama.cpp`-style server or the in-process embedded inference engine
 - Launch and manage a local `llama.cpp` server automatically if configured
@@ -36,6 +38,7 @@ That last part is the feature. The only feature.
 - Has prompt caching for embedded inference where possible
 - Customize font, colors, and other editor appearance settings
 - Save named preference presets for different editing and AI setups
+- Optionally create `.bak` backups before overwriting existing loaded files
 - Provide desktop installation
 - Stay small, local, and boring in the best possible way
 
@@ -82,6 +85,14 @@ Suggestions are taken from a user-supplied word list. This is useful for keyword
 
 Suggestions are based on words already present in the open document. This is useful for programming identifiers, repeated names, project-specific words, and general consistency.
 
+### Markov model
+
+Suggestions are generated from a small Markov model trained from the current document text. No cloud, no model file, no wizard. It simply looks at local token transitions in the text you already wrote and guesses what usually follows what.
+
+This mode can generate multiple alternative continuations, so `Up` and `Down` work the same way as in other multi-candidate modes.
+
+The `Stop on punctuation` preference decides whether Markov suggestions politely stop at punctuation instead of trying to finish the entire paragraph like a caffeinated parrot.
+
 ### AI connector
 
 Suggestions come from a local `llama.cpp`-style server. This allows Latea to generate longer completions, including prose continuation or source code.
@@ -122,7 +133,15 @@ The intent is that autocomplete feels like part of typing, not a separate dialog
 
 ## Preferences and status
 
-Latea now supports named preference presets. Instead of one sacred global configuration carved into stone, you can keep multiple setups and quickly switch between them.
+Latea supports named preference presets. Instead of one sacred global configuration carved into stone, you can keep multiple setups and quickly switch between them.
+
+## Saving files
+
+Saving files is still meant to be boring. Boring is good. Boring means your text survives.
+
+If `Save backup` is enabled, saving an existing loaded file first writes the previously loaded or saved contents to `<filename>.bak`. The old known-good version gets a tiny cardboard helmet before the new one marches in.
+
+After a successful save, Latea remembers the newly saved contents as the backup baseline for the next save.
 
 ## Build
 

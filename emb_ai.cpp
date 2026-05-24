@@ -55,7 +55,7 @@ bool emb_ai::complete(const ai_request &req, ai_result &res)
     state.temp = req.temperature;
     state.greedy = req.temperature <= 0.0;
 
-    while (ntoks < req.max_chars) {
+    while (ntoks < req.maxtoks) {
         if (stop_requested) {
             res.error = "Embedded AI stopped";
             return false;

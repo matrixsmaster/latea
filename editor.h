@@ -53,6 +53,7 @@ struct latea
     autocomp* cmpt;
     autocomp_dict cmpt_dict;
     autocomp_file cmpt_file;
+    autocomp_markov cmpt_mkv;
     autocomp_lan_ai cmpt_ai;
     autocomp_emb_ai cmpt_emb_ai;
     suggestion_state suggest;
@@ -66,6 +67,7 @@ struct latea
     int text_rev;
     Fl_PNG_Image* app_icon;
     Fl_Image* about_img;
+    std::string file_text;
 
     latea();
 

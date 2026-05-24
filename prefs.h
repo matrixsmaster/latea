@@ -18,7 +18,8 @@ enum {
     AUTOCOMPLETE_DICTIONARY_FILE = 1,
     AUTOCOMPLETE_CURRENT_FILE = 2,
     AUTOCOMPLETE_AI = 3,
-    AUTOCOMPLETE_EMBEDDED_AI = 4
+    AUTOCOMPLETE_EMBEDDED_AI = 4,
+    AUTOCOMPLETE_MARKOV = 5
 };
 
 enum {
@@ -33,7 +34,7 @@ struct app_prefs
     std::string dict_path;
     int autocomp_mode;
     bool cont_autocomp;
-    int max_suggestion_chars;
+    int max_suggestion;
     std::string model_path;
     std::string text_font_name;
     int text_size;
@@ -59,6 +60,8 @@ struct app_prefs
     bool ai_cache_prompt;
     int ai_slot_id;
     bool ai_tq;
+    bool save_backup;
+    bool stop_punct;
 
     std::map<std::string, std::string> sets;
 

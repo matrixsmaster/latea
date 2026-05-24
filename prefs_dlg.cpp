@@ -40,11 +40,14 @@ void prefs_dialog::sync_ui()
     case AUTOCOMPLETE_EMBEDDED_AI:
         g_wnd->ui->autocmp_embedded->set();
         break;
+    case AUTOCOMPLETE_MARKOV:
+        g_wnd->ui->autocmp_markov->set();
+        break;
     }
 
     char buf[64];
-    snprintf(buf, sizeof(buf), "%d", p.max_suggestion_chars);
-    g_wnd->ui->max_chars_input->value(buf);
+    snprintf(buf, sizeof(buf), "%d", p.max_suggestion);
+    g_wnd->ui->max_suggest_input->value(buf);
     g_wnd->ui->model_path_input->value(p.model_path.c_str());
     g_wnd->ui->llama_path_input->value(p.ai_launch_path.c_str());
     g_wnd->ui->ai_host_input->value(p.ai_host.c_str());
@@ -72,6 +75,8 @@ void prefs_dialog::sync_ui()
     g_wnd->ui->ai_cache_check->value(p.ai_cache_prompt ? 1 : 0);
     g_wnd->ui->ai_tq_check->value(p.ai_tq ? 1 : 0);
     g_wnd->ui->system_prompt_input->value(p.ai_system_prompt.c_str());
+    g_wnd->ui->save_backup_check->value(p.save_backup ? 1 : 0);
+    g_wnd->ui->stop_punct_check->value(p.stop_punct ? 1 : 0);
 
     p.cont_autocomp ? g_wnd->ui->autocmp_cont->set() : g_wnd->ui->autocmp_cont->clear();
     p.word_wrap ? g_wnd->ui->view_wrdwrp->set() : g_wnd->ui->view_wrdwrp->clear();
@@ -82,7 +87,7 @@ void prefs_dialog::sync_ui()
 void prefs_dialog::sync_from_ui()
 {
     prefs.dict_path = g_wnd->ui->dictionary_path_input->value();
-    prefs.max_suggestion_chars = atoi(g_wnd->ui->max_chars_input->value());
+    prefs.max_suggestion = atoi(g_wnd->ui->max_suggest_input->value());
     prefs.model_path = g_wnd->ui->model_path_input->value();
     prefs.ai_launch_path = g_wnd->ui->llama_path_input->value();
     prefs.ai_host = g_wnd->ui->ai_host_input->value();
@@ -100,6 +105,8 @@ void prefs_dialog::sync_from_ui()
     prefs.ai_cache_prompt = g_wnd->ui->ai_cache_check->value() != 0;
     prefs.ai_tq = g_wnd->ui->ai_tq_check->value() != 0;
     prefs.ai_system_prompt = g_wnd->ui->system_prompt_input->value();
+    prefs.save_backup = g_wnd->ui->save_backup_check->value() != 0;
+    prefs.stop_punct = g_wnd->ui->stop_punct_check->value() != 0;
 }
 
 void prefs_dialog::open()

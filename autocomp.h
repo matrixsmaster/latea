@@ -2,12 +2,16 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <pthread.h>
 #include "emb_ai.h"
 #include "llama_client.h"
 
 #define AUTOCOMPLETE_DELAY_SEC 0.18
 #define AUTOCOMPLETE_POLL_SEC 0.05
+#define MKV_MAX_OPTS 24
+#define MKV_MAX_BEAM 48
+#define MKV_MAX_BRANCH 6
 
 enum { W_IDLE, W_RUNNING, W_DONE, W_GONE };
 
@@ -133,4 +137,36 @@ struct autocomp_emb_ai : autocomp_ai
     void on_finish_locked(bool &backend_action);
     void after_finish_unlocked(bool backend_action);
     void poll_running();
+};
+
+struct mkv_edge
+{
+    int to, cnt, sep_cnt;
+    std::string sep;
+};
+
+struct mkv_path
+{
+    int tok;
+    int atoms;
+    double score;
+    std::string text;
+};
+
+struct autocomp_markov : autocomp
+{
+    std::vector<std::string> toks;
+    std::vector<int> freq; // TODO: these three are used in conjunction - better to re-use an existing struct to store
+    std::vector<int> start_cnt;
+    std::vector<int> out_cnt;
+    std::vector<std::vector<mkv_edge> > edges;
+    std::map<std::string, int> tok_id;
+    bool dirty = true;
+
+    void on_preferences_changed();
+    void on_text_changed(int pos, int inserted, int deleted, const char* deleted_text);
+    bool complete(std::string &text, int &anchor_pos);
+    bool move_suggestion(int dir);
+    void reset_state();
+    void rebuild();
 };

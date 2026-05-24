@@ -121,7 +121,7 @@ std::string llama_client::build_completion_json(const ai_request &req) const
     prompt += req.prefix;
     out << "{";
     out << "\"prompt\":\"" << json_escape(prompt) << "\",";
-    out << "\"n_predict\":" << req.max_chars << ",";
+    out << "\"n_predict\":" << req.maxtoks << ",";
     out << "\"n_ctx\":" << req.context_length << ",";
     out << "\"temperature\":" << req.temperature << ",";
     out << "\"top_p\":" << req.top_p << ",";
@@ -140,7 +140,7 @@ std::string llama_client::build_infill_json(const ai_request &req) const
     out << "{";
     out << "\"input_prefix\":\"" << json_escape(prefix) << "\",";
     out << "\"input_suffix\":\"" << json_escape(req.suffix) << "\",";
-    out << "\"n_predict\":" << req.max_chars << ",";
+    out << "\"n_predict\":" << req.maxtoks << ",";
     out << "\"n_ctx\":" << req.context_length << ",";
     out << "\"temperature\":" << req.temperature << ",";
     out << "\"top_p\":" << req.top_p << ",";

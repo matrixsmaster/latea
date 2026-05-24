@@ -235,6 +235,7 @@ void latea::new_document()
     textbuf->text("");
     suppress_history--;
     filename.clear();
+    file_text.clear();
     reset_loaded_document_state("New document");
 }
 
@@ -260,6 +261,9 @@ bool latea::open_file(const char* path)
     }
 
     filename = path;
+    char* text = textbuf->text();
+    file_text = text ? text : "";
+    free(text);
     reset_loaded_document_state("File opened");
     return true;
 }
@@ -267,12 +271,29 @@ bool latea::open_file(const char* path)
 bool latea::save_file()
 {
     if (filename.empty()) return save_file_as();
+
+    if (prefs.save_backup && !file_text.empty()) {
+        string bak_path = filename + ".bak";
+        FILE* bak = fopen(bak_path.c_str(), "wb");
+        if (!bak) {
+            fl_alert("Cannot save backup '%s': %s", bak_path.c_str(), strerror(errno));
+            update_status("Backup failed");
+            return false;
+        }
+        fwrite(file_text.data(), file_text.size(), 1, bak);
+        fclose(bak);
+    }
+
     int rc = textbuf->savefile(filename.c_str());
     if (rc != 0) {
         fl_alert("Cannot save '%s': %s", filename.c_str(), strerror(errno));
         update_status("Save failed");
         return false;
     }
+
+    char* text = textbuf->text();
+    file_text = text ? text : "";
+    free(text);
     set_changed(false);
     update_status("File saved");
     return true;
@@ -280,13 +301,25 @@ bool latea::save_file()
 
 bool latea::save_file_as()
 {
+    string old = filename;
+
     Fl_Native_File_Chooser chooser;
     chooser.title("Save As");
     chooser.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
     if (!filename.empty()) chooser.preset_file(filename.c_str());
     if (chooser.show()) return false;
+
     filename = chooser.filename();
-    return save_file();
+    if (!access(filename.c_str(),F_OK) && fl_choice("Overwrite existing file '%s'?", "Cancel", "Overwrite", NULL, filename.c_str()) != 1) {
+        update_status("Save canceled");
+        filename = old;
+        return false;
+    }
+
+    if (save_file()) return true;
+    filename = old;
+    update_title();
+    return false;
 }
 
 bool latea::save_if_needed()
@@ -514,6 +547,7 @@ void latea::apply_preferences()
     g_prefs_dlg->sync_ui();
     cmpt_dict.on_preferences_changed();
     cmpt_file.on_preferences_changed();
+    cmpt_mkv.on_preferences_changed();
     cmpt_ai.on_preferences_changed();
     cmpt_emb_ai.on_preferences_changed();
     select_autocomp();
@@ -540,6 +574,9 @@ void latea::select_autocomp()
         break;
     case AUTOCOMPLETE_EMBEDDED_AI:
         cmpt = &cmpt_emb_ai;
+        break;
+    case AUTOCOMPLETE_MARKOV:
+        cmpt = &cmpt_mkv;
         break;
     default:
         cmpt = &cmpt_dict;
@@ -615,6 +652,7 @@ void latea::reset_autocomp()
 {
     cmpt_dict.cancel_pending();
     cmpt_file.cancel_pending();
+    cmpt_mkv.cancel_pending();
     cmpt_ai.cancel_pending();
     cmpt_emb_ai.cancel_pending();
     llama_client::stop_server();
@@ -627,9 +665,15 @@ void latea::reset_autocomp()
 
 void latea::set_suggestion(const string &text, int anchor_pos, int request_id)
 {
-    int max_chars = prefs.max_suggestion_chars;
-    if (prefs.autocomp_mode == AUTOCOMPLETE_AI || prefs.autocomp_mode == AUTOCOMPLETE_EMBEDDED_AI) max_chars = 0;
-    string clean = sanitize_suggestion(text, max_chars);
+    int maxc = prefs.max_suggestion;
+    switch (prefs.autocomp_mode) {
+    case AUTOCOMPLETE_AI:
+    case AUTOCOMPLETE_EMBEDDED_AI:
+    case AUTOCOMPLETE_MARKOV:
+        maxc = 0;
+    }
+
+    string clean = sanitize_suggestion(text, maxc);
     if (clean.empty()) {
         clear_suggestion();
         return;
@@ -660,19 +704,27 @@ void latea::set_suggestion(const string &text, int anchor_pos, int request_id)
 
 void latea::set_suggestion_list(vector<string> vars, int var_idx, int anchor_pos, int request_id)
 {
-    int max_chars = prefs.max_suggestion_chars;
-    if (prefs.autocomp_mode == AUTOCOMPLETE_AI || prefs.autocomp_mode == AUTOCOMPLETE_EMBEDDED_AI) max_chars = 0;
+    int maxc = prefs.max_suggestion;
+    switch (prefs.autocomp_mode) {
+    case AUTOCOMPLETE_AI:
+    case AUTOCOMPLETE_EMBEDDED_AI:
+    case AUTOCOMPLETE_MARKOV:
+        maxc = 0;
+    }
+
     suggest.clear();
     for (size_t i = 0; i < vars.size(); i++) {
-        string clean = sanitize_suggestion(vars[i], max_chars);
+        string clean = sanitize_suggestion(vars[i], maxc);
         if (!clean.empty()) suggest.vars.push_back(clean);
     }
+
     if (suggest.vars.empty()) {
         editor->redraw();
         return;
     }
     if (var_idx < 0) var_idx = 0;
     if (var_idx >= (int)suggest.vars.size()) var_idx = (int)suggest.vars.size() - 1;
+
     suggest.text = suggest.vars.at(var_idx);
     suggest.anchor_pos = anchor_pos;
     suggest.request_id = request_id;

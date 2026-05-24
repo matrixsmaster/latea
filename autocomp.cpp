@@ -1,5 +1,6 @@
 #include <FL/Fl.H>
 #include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
@@ -7,6 +8,8 @@
 #include "common.h"
 #include "autocomp.h"
 #include "editor.h"
+
+using namespace std;
 
 autocomp::~autocomp()
 {
@@ -66,7 +69,7 @@ void autocomp::schedule()
 
 void autocomp::trigger_now()
 {
-    std::string text;
+    string text;
     int anchor_pos = 0;
 
     cancel_timer();
@@ -86,11 +89,11 @@ bool autocomp::can_complete() const
 {
     if (g_wnd->suppress_autocomp) return false;
     if (g_wnd->prefs.autocomp_mode == AUTOCOMPLETE_DISABLED) return false;
-    if (g_wnd->prefs.max_suggestion_chars <= 0) return false;
+    if (g_wnd->prefs.max_suggestion <= 0) return false;
     return true;
 }
 
-bool autocomp::current_word(std::string &prefix, int &anchor_pos) const
+bool autocomp::current_word(string &prefix, int &anchor_pos) const
 {
     int pos = g_wnd->editor->insert_position();
     int start = pos;
@@ -110,7 +113,7 @@ bool autocomp::current_word(std::string &prefix, int &anchor_pos) const
     return true;
 }
 
-void autocomp::publish(const std::string &text, int anchor_pos, int request_id)
+void autocomp::publish(const string &text, int anchor_pos, int request_id)
 {
     g_wnd->set_suggestion(text, anchor_pos, request_id);
 }
@@ -130,16 +133,16 @@ void autocomp_dict::on_preferences_changed()
     words.clear();
 }
 
-bool autocomp_dict::complete(std::string &text, int &anchor_pos)
+bool autocomp_dict::complete(string &text, int &anchor_pos)
 {
-    std::string prefix;
-    std::string prefix_lower;
+    string prefix;
+    string prefix_lower;
     int pos;
     if (!current_word(prefix, anchor_pos)) return 0;
     if (!g_wnd->prefs.dict_path.size()) return false;
     if (loaded_path != g_wnd->prefs.dict_path) {
-        std::ifstream file(g_wnd->prefs.dict_path.c_str());
-        std::string word;
+        ifstream file(g_wnd->prefs.dict_path.c_str());
+        string word;
         words.clear();
         while (file >> word) words.push_back(word);
         loaded_path = g_wnd->prefs.dict_path;
@@ -162,10 +165,10 @@ bool autocomp_dict::complete(std::string &text, int &anchor_pos)
     return true;
 }
 
-bool autocomp_file::complete(std::string &text, int &anchor_pos)
+bool autocomp_file::complete(string &text, int &anchor_pos)
 {
-    std::string prefix;
-    std::set<std::string> options;
+    string prefix;
+    set<string> options;
     int pos;
     if (!current_word(prefix, anchor_pos)) return 0;
 
@@ -179,14 +182,14 @@ bool autocomp_file::complete(std::string &text, int &anchor_pos)
         if (!*p) break;
         char *start = p;
         while (*p && is_word_char(*p)) p++;
-        std::string word(start, p - start);
+        string word(start, p - start);
         if (word.size() <= prefix.size()) continue;
         if (word.compare(0, prefix.size(), prefix) != 0) continue;
         options.insert(word);
     }
     if (all) free(all);
 
-    for (std::set<std::string>::iterator it = options.begin(); it != options.end(); ++it) {
+    for (set<string>::iterator it = options.begin(); it != options.end(); ++it) {
         if (opt_anchor != pos) continue;
         opts.push_back(it->substr(prefix.size()));
     }
@@ -331,7 +334,7 @@ bool autocomp_ai::move_suggestion(int dir)
     return true;
 }
 
-bool autocomp_ai::build_request_text(std::string &prefix, std::string &suffix, int &anchor_pos)
+bool autocomp_ai::build_request_text(string &prefix, string &suffix, int &anchor_pos)
 {
     int pos;
     int before;
@@ -484,7 +487,7 @@ bool autocomp_lan_ai::build_request()
     pending.model_path = g_wnd->prefs.model_path;
     pending.launch_path = g_wnd->prefs.ai_launch_path;
     pending.endpoint_mode = g_wnd->prefs.ai_endpoint_mode;
-    pending.max_chars = g_wnd->prefs.max_suggestion_chars;
+    pending.maxtoks = g_wnd->prefs.max_suggestion;
     pending.timeout_ms = g_wnd->prefs.ai_timeout_ms;
     pending.context_length = g_wnd->prefs.ai_context_length;
     pending.temperature = g_wnd->prefs.ai_temperature;
@@ -537,7 +540,7 @@ bool autocomp_emb_ai::build_request()
     if (!build_request_text(pending.prefix, pending.suffix, pending.anchor_pos)) return false;
     pending.serial = next_request_serial();
     pending.model_path = g_wnd->prefs.model_path;
-    pending.max_chars = g_wnd->prefs.max_suggestion_chars;
+    pending.maxtoks = g_wnd->prefs.max_suggestion;
     pending.context_length = g_wnd->prefs.ai_context_length;
     pending.top_k = g_wnd->prefs.ai_top_k;
     pending.top_p = g_wnd->prefs.ai_top_p;
@@ -628,7 +631,7 @@ void autocomp_emb_ai::poll_running()
     int serial = last_serial;
     pthread_mutex_unlock(&lock);
 
-    std::string partial;
+    string partial;
     engine.get_partial_text(partial);
 
     int used = 0, ctx = 0;
@@ -638,4 +641,295 @@ void autocomp_emb_ai::poll_running()
         publish(partial, req.anchor_pos, req.serial);
         g_wnd->update_ai_status("AI generating");
     }
+}
+
+void autocomp_markov::on_preferences_changed()
+{
+    autocomp::on_preferences_changed();
+    rebuild();
+}
+
+void autocomp_markov::on_text_changed(int pos, int inserted, int deleted, const char* deleted_text)
+{
+    rebuild();
+    autocomp::on_text_changed(pos, inserted, deleted, deleted_text);
+}
+
+void autocomp_markov::reset_state()
+{
+    opts.clear();
+    opt_idx = 0;
+    opt_anchor = 0;
+}
+
+static bool cmp_mkv_path(const mkv_path &a, const mkv_path &b)
+{
+    return a.score > b.score;
+}
+
+static bool mkv_next(char* &p, string &tok, string &sep)
+{
+    if (!p) return false;
+    char* gap = p;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (!*p) return false;
+    sep.assign(gap, p - gap);
+    if (is_word_char(*p)) {
+        char* start = p;
+        while (*p && is_word_char(*p)) p++;
+        tok.assign(start, p - start);
+    } else {
+        tok.assign(1, *p);
+        p++;
+    }
+    return true;
+}
+
+static double mkv_edge_sc(const mkv_edge &edge, int out)
+{
+    return log((double)edge.cnt / MAX(1, out));
+}
+
+static void mkv_add(vector<mkv_path> &paths, map<string, size_t> &ids, const mkv_path &path)
+{
+    map<string, size_t>::iterator it = ids.find(path.text);
+    if (it == ids.end()) {
+        ids[path.text] = paths.size();
+        paths.push_back(path);
+        return;
+    }
+    if (path.score > paths[it->second].score) paths[it->second] = path;
+}
+
+static void mkv_seed(vector<mkv_path> &paths, map<string, size_t> &ids, int tok, double score, const string &text, const vector<vector<mkv_edge> > &edges)
+{
+    mkv_path path;
+    path.tok = tok;
+    path.atoms = 1;
+    path.score = score;
+    path.text = text;
+    if (path.text.empty() && edges[(size_t)path.tok].empty()) return;
+    mkv_add(paths, ids, path);
+}
+
+static bool mkv_row(vector<mkv_path> &paths, map<string, size_t> &ids, const vector<mkv_edge> &row, int out, const vector<string> &toks, const string &pref, bool use_pref, const vector<vector<mkv_edge> > &edges)
+{
+    bool hit = false;
+    for (size_t i = 0; i < row.size(); i++) {
+        const string &tok = toks[(size_t)row[i].to];
+        if (use_pref && tok.compare(0, pref.size(), pref)) continue;
+        hit = true;
+        double score = mkv_edge_sc(row[i], out);
+        if (use_pref) mkv_seed(paths, ids, row[i].to, score, tok.substr(pref.size()), edges);
+        else mkv_seed(paths, ids, row[i].to, score, tok, edges);
+    }
+    return hit;
+}
+
+static bool mkv_vocab(vector<mkv_path> &paths, map<string, size_t> &ids, const vector<string> &toks, const vector<int> &freq, const vector<int> &start_cnt, int start_sum, double all_sum, const string &pref, bool use_pref, const vector<vector<mkv_edge> > &edges)
+{
+    bool hit = false;
+    for (size_t i = 0; i < toks.size(); i++) {
+        if (use_pref && toks[i].compare(0, pref.size(), pref)) continue;
+        hit = true;
+        double score = use_pref || start_sum <= 0 || start_cnt[i] <= 0 ? log((double)MAX(1, freq[i]) / MAX(1.0, all_sum)) : log((double)start_cnt[i] / start_sum);
+        if (use_pref) mkv_seed(paths, ids, i, score, toks[i].substr(pref.size()), edges);
+        else mkv_seed(paths, ids, i, score, toks[i], edges);
+    }
+    return hit;
+}
+
+void autocomp_markov::rebuild()
+{
+    char* all = g_wnd->textbuf->text();
+    char* p = all;
+    int prev = -1;
+
+    toks.clear();
+    freq.clear();
+    start_cnt.clear();
+    out_cnt.clear();
+    edges.clear();
+    tok_id.clear();
+    while (1) {
+        string tok, sep;
+        int id;
+
+        if (!mkv_next(p, tok, sep)) break;
+        map<string, int>::iterator it = tok_id.find(tok);
+        if (it == tok_id.end()) {
+            id = toks.size();
+            tok_id[tok] = id;
+            toks.push_back(tok);
+            freq.push_back(0);
+            start_cnt.push_back(0);
+            out_cnt.push_back(0);
+            edges.push_back(vector<mkv_edge>());
+        } else
+            id = it->second;
+
+        freq[(size_t)id]++;
+
+        if (prev < 0) start_cnt[(size_t)id]++;
+        else {
+            vector<mkv_edge> &row = edges[(size_t)prev];
+            size_t i;
+            out_cnt[(size_t)prev]++;
+            for (i = 0; i < row.size(); i++) {
+                if (row[i].to != id) continue;
+                row[i].cnt++;
+                if (row[i].sep == sep) row[i].sep_cnt++;
+                else if (row[i].sep_cnt <= 1) {
+                    row[i].sep = sep;
+                    row[i].sep_cnt = 1;
+                }
+                break;
+            }
+            if (i == row.size()) {
+                mkv_edge edge;
+                edge.to = id;
+                edge.cnt = 1;
+                edge.sep_cnt = 1;
+                edge.sep = sep;
+                row.push_back(edge);
+            }
+        }
+        prev = id;
+    }
+    if (all) free(all);
+    dirty = false;
+}
+
+bool autocomp_markov::complete(string &text, int &anchor_pos)
+{
+    if (dirty) rebuild();
+    if (toks.empty()) return false;
+    anchor_pos = g_wnd->editor->insert_position();
+    if (g_wnd->textbuf->selected()) return false;
+    string prev;
+    string pref;
+    bool have_prev = false;
+    bool have_pref = false;
+    char* all = g_wnd->textbuf->text_range(0, anchor_pos);
+    char* p = all;
+    string last;
+    string before;
+
+    while (1) {
+        string tok, sep;
+
+        if (!mkv_next(p, tok, sep)) break;
+        before = last;
+        last = tok;
+    }
+    if (anchor_pos > 0) {
+        char c = g_wnd->textbuf->char_at(anchor_pos - 1);
+        if (is_word_char(c)) {
+            if (!last.empty()) {
+                pref = last;
+                have_pref = true;
+            }
+            if (!before.empty()) {
+                prev = before;
+                have_prev = true;
+            }
+        } else if (!isspace((unsigned char)c) || !last.empty()) {
+            prev = last;
+            have_prev = !prev.empty();
+        }
+    }
+    if (all) free(all);
+    int prev_id = -1;
+    if (have_prev) {
+        map<string, int>::iterator it = tok_id.find(prev);
+        if (it != tok_id.end()) prev_id = it->second;
+    }
+
+    opts.clear();
+    opt_idx = 0;
+    opt_anchor = anchor_pos;
+    int start_sum = 0;
+    for (size_t i = 0; i < start_cnt.size(); i++) start_sum += start_cnt[i];
+    double all_sum = 0;
+    for (size_t i = 0; i < freq.size(); i++) all_sum += freq[i];
+    vector<mkv_path> beam;
+    map<string, size_t> beam_ids;
+    bool init_hit = false;
+
+    if (have_pref && prev_id >= 0) {
+        vector<mkv_edge> &row = edges[(size_t)prev_id];
+        init_hit = mkv_row(beam, beam_ids, row, out_cnt[(size_t)prev_id], toks, pref, true, edges);
+    }
+    if (!init_hit && have_pref) {
+        init_hit = mkv_vocab(beam, beam_ids, toks, freq, start_cnt, start_sum, all_sum, pref, true, edges);
+    }
+    if (!init_hit && !have_pref && prev_id >= 0) {
+        vector<mkv_edge> &row = edges[(size_t)prev_id];
+        init_hit = mkv_row(beam, beam_ids, row, out_cnt[(size_t)prev_id], toks, pref, false, edges);
+    }
+    if (!init_hit) {
+        mkv_vocab(beam, beam_ids, toks, freq, start_cnt, start_sum, all_sum, pref, false, edges);
+    }
+    if (beam.empty()) return false;
+    sort(beam.begin(), beam.end(), cmp_mkv_path);
+    if (beam.size() > MKV_MAX_BEAM) beam.resize(MKV_MAX_BEAM);
+
+    int limit = g_wnd->prefs.max_suggestion;
+    vector<mkv_path> done;
+    map<string, size_t> done_ids;
+    while (!beam.empty() && done.size() < MKV_MAX_OPTS) {
+        vector<mkv_path> next;
+        map<string, size_t> next_ids;
+        for (size_t i = 0; i < beam.size(); i++) {
+            string &tok = toks[(size_t)beam[i].tok];
+            bool punct = tok.size() == 1 && !is_word_char(tok[0]) && !isspace((unsigned char)tok[0]);
+            if ((g_wnd->prefs.stop_punct && punct && !beam[i].text.empty()) || beam[i].atoms >= limit || edges[(size_t)beam[i].tok].empty()) {
+                if (!beam[i].text.empty()) mkv_add(done, done_ids, beam[i]);
+                continue;
+            }
+
+            vector<mkv_edge> row = edges[(size_t)beam[i].tok];
+            sort(row.begin(), row.end(), [](const mkv_edge &a, const mkv_edge &b) { return a.cnt > b.cnt; });
+            if (row.size() > MKV_MAX_BRANCH) row.resize(MKV_MAX_BRANCH);
+            for (size_t j = 0; j < row.size(); j++) {
+                mkv_path path = beam[i];
+                path.tok = row[j].to;
+                path.atoms++;
+                path.score += mkv_edge_sc(row[j], out_cnt[(size_t)beam[i].tok]);
+                path.text += row[j].sep;
+                path.text += toks[(size_t)row[j].to];
+                mkv_add(next, next_ids, path);
+            }
+        }
+        if (next.empty()) break;
+        sort(next.begin(), next.end(), cmp_mkv_path);
+        if (next.size() > MKV_MAX_BEAM) next.resize(MKV_MAX_BEAM);
+        beam.swap(next);
+    }
+    for (size_t i = 0; i < beam.size(); i++) {
+        if (!beam[i].text.empty()) mkv_add(done, done_ids, beam[i]);
+    }
+    sort(done.begin(), done.end(), cmp_mkv_path);
+    for (size_t i = 0; i < done.size(); i++) {
+        opts.push_back(done[i].text);
+        if (opts.size() >= MKV_MAX_OPTS) break;
+    }
+    if (opts.empty()) return false;
+    g_wnd->set_suggestion_list(opts, 0, anchor_pos);
+    text = opts[0];
+    return true;
+}
+
+bool autocomp_markov::move_suggestion(int dir)
+{
+    if (!g_wnd->suggest.visible || g_wnd->editor->insert_position() != opt_anchor || opts.empty()) return false;
+    if (dir < 0) {
+        if (opt_idx <= 0) return false;
+        opt_idx--;
+    } else {
+        if (opt_idx + 1 >= (int)opts.size()) return false;
+        opt_idx++;
+    }
+    g_wnd->set_suggestion_list(opts, opt_idx, opt_anchor);
+    return true;
 }
