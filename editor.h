@@ -51,6 +51,7 @@ struct latea
     app_prefs prefs;
     edit_history history;
     autocomp* cmpt;
+    autocomp cmpt_none;
     autocomp_dict cmpt_dict;
     autocomp_file cmpt_file;
     autocomp_markov cmpt_mkv;
@@ -67,8 +68,6 @@ struct latea
     int text_rev;
     Fl_PNG_Image* app_icon;
     Fl_Image* about_img;
-    std::string file_text;
-
     latea();
 
     void new_document();

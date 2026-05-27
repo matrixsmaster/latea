@@ -14,7 +14,7 @@ class LateaUI {open
       code1 {\#include "font_dialog.h"}
       code2 {\#include "prefs_dlg.h"} visible
     } {
-      Fl_Menu_Bar {} {
+      Fl_Menu_Bar {} {open
         xywh {0 0 635 28}
       } {
         Submenu {} {
@@ -118,6 +118,12 @@ g_wnd->apply_preferences();}
             callback {g_wnd->show_stats();}
             xywh {0 0 100 20} shortcut 0x40069 divider
           }
+          MenuItem auto_indent_item {
+            label {Auto-indent}
+            callback {g_wnd->prefs.auto_indent = o->mvalue() ? o->mvalue()->value() : 0;
+g_wnd->apply_preferences();}
+            xywh {0 0 100 20} type Toggle
+          }
           Submenu {} {
             label Autocomplete open
             xywh {0 0 100 20}
@@ -184,13 +190,18 @@ g_wnd->apply_preferences();}
           xywh {0 0 100 20}
         } {
           MenuItem {} {
+            label Manual
+            callback {help_window->show();}
+            xywh {0 0 100 20}
+          }
+          MenuItem {} {
             label Models
-            callback {g_wnd->ui->models_window->show();}
+            callback {models_window->show();}
             xywh {0 0 100 20}
           }
           MenuItem {} {
             label About
-            callback {g_wnd->ui->about_window->show();}
+            callback {about_window->show();}
             xywh {0 0 100 20}
           }
         }
@@ -251,25 +262,25 @@ g_wnd->apply_preferences();}
     }
     Fl_Window prefs_window {
       label Preferences
-      xywh {314 159 460 440} type Double modal visible
+      xywh {314 159 460 475} type Double modal visible
     } {
-      Fl_Return_Button {} {
-        label OK
-        callback {g_prefs_dlg->accept();}
-        private xywh {290 407 80 28}
-      }
-      Fl_Button {} {
-        label Cancel
-        callback {o->window()->hide();}
-        private xywh {375 407 80 28}
-      }
       Fl_Input_Choice prefs_preset {
         label Preset
         callback {g_prefs_dlg->preset_changed();} open
         xywh {60 5 275 25}
       } {}
+      Fl_Button {} {
+        label New
+        callback {g_prefs_dlg->new_preset();}
+        private xywh {340 5 55 25}
+      }
+      Fl_Button {} {
+        label Delete
+        callback {g_prefs_dlg->del_preset();}
+        private xywh {400 5 55 25}
+      }
       Fl_Group {} {
-        xywh {5 35 450 365} box ENGRAVED_FRAME
+        xywh {5 35 450 395} box ENGRAVED_FRAME
       } {
         Fl_Input dictionary_path_input {
           label {Dictionary path}
@@ -283,6 +294,10 @@ g_wnd->apply_preferences();}
         Fl_Input max_suggest_input {
           label {Max suggestion}
           xywh {146 71 80 24} type Int
+        }
+        Fl_Input ac_delay_input {
+          label {Delay ms}
+          xywh {300 71 80 24} type Int
         }
         Fl_Input model_path_input {
           label {Model path}
@@ -323,17 +338,33 @@ g_wnd->apply_preferences();}
             xywh {5 5 100 20}
           }
         }
-        Fl_Input ai_delay_input {
-          label {Delay ms}
-          xywh {300 71 80 24} type Int
-        }
         Fl_Input ai_timeout_input {
           label Timeout
           xywh {370 191 80 24} type Int
         }
+        Fl_Input ai_slot_input {
+          label {AI slot id}
+          xywh {145 221 104 24} type Int
+        }
+        Fl_Check_Button ai_cache_check {
+          label {Use prompt cache}
+          xywh {260 221 170 24} down_box DOWN_BOX
+        }
         Fl_Input ai_context_input {
           label {Context length}
           xywh {145 251 104 24} type Int
+        }
+        Fl_Check_Button ai_tq_check {
+          label TurboQuant
+          xywh {260 251 120 24} down_box DOWN_BOX
+        }
+        Fl_Input ai_prefix_input {
+          label {Prefix chars}
+          xywh {145 281 104 24} type Int
+        }
+        Fl_Input ai_suffix_input {
+          label {Suffix chars}
+          xywh {349 281 100 24} type Int
         }
         Fl_Input ai_temperature_input {
           label Temperature
@@ -347,48 +378,32 @@ g_wnd->apply_preferences();}
           label {Top K}
           xywh {391 311 58 24} type Int
         }
-        Fl_Input ai_prefix_input {
-          label {Prefix chars}
-          xywh {145 281 104 24} type Int
-        }
-        Fl_Input ai_suffix_input {
-          label {Suffix chars}
-          xywh {349 281 100 24} type Int
-        }
-        Fl_Input ai_slot_input {
-          label {AI slot id}
-          xywh {145 221 104 24} type Int
-        }
-        Fl_Check_Button ai_cache_check {
-          label {Use prompt cache}
-          xywh {260 221 170 24} down_box DOWN_BOX
-        }
-        Fl_Check_Button ai_tq_check {
-          label TurboQuant
-          xywh {260 251 120 24} down_box DOWN_BOX
-        }
         Fl_Input system_prompt_input {
           label {System prompt}
           xywh {145 341 305 24}
         }
+        Fl_Input tab_spaces_input {
+          label {Tabs as spaces}
+          xywh {145 370 80 25}
+        }
         Fl_Check_Button save_backup_check {
           label {Save backup}
-          xywh {145 371 115 24} down_box DOWN_BOX
+          xywh {145 401 115 24} down_box DOWN_BOX
         }
         Fl_Check_Button stop_punct_check {
           label {Stop on punctuation}
-          xywh {280 370 170 25} down_box DOWN_BOX
+          xywh {280 400 170 25} down_box DOWN_BOX
         }
       }
-      Fl_Button {} {
-        label New
-        callback {g_prefs_dlg->new_preset();}
-        private xywh {340 5 55 25}
+      Fl_Return_Button {} {
+        label OK
+        callback {g_prefs_dlg->accept();}
+        private xywh {290 437 80 28}
       }
       Fl_Button {} {
-        label Delete
-        callback {g_prefs_dlg->del_preset();}
-        private xywh {400 5 55 25}
+        label Cancel
+        callback {o->window()->hide();}
+        private xywh {375 437 80 28}
       }
     }
     Fl_Window font_window {
@@ -528,6 +543,19 @@ g_wnd->apply_preferences();}
         private xywh {10 110 320 60} box DOWN_FRAME align 1
         code0 {\#include "common.h"}
         code1 {sup_feat->value(CAPABILITIES);}
+      }
+    }
+    Fl_Window help_window {
+      label {Latea Help}
+      xywh {314 159 415 355} type Double resizable modal visible
+    } {
+      Fl_Text_Display help_output {
+        xywh {0 0 415 315}
+      }
+      Fl_Return_Button {} {
+        label Close
+        callback {o->window()->hide();}
+        private xywh {5 320 405 30}
       }
     }
   }

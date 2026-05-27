@@ -33,12 +33,11 @@ struct ai_request
     std::string prefix, suffix;
     std::string system_prompt;
     std::string host, model_path, launch_path;
-    int endpoint_mode;
     int maxtoks, timeout_ms, context_length;
     float temperature, top_p;
     int top_k;
     int slot_id, port;
-    bool cache_prompt, tquant;
+    bool cache_prompt, tquant, infill;
 };
 
 struct ai_result

@@ -19,18 +19,18 @@ emb_ai::~emb_ai()
 
 bool emb_ai::complete(const ai_request &req, ai_result &res)
 {
-    int ntoks = 0;
-    int shared = 0;
-    vector<int> toks;
-
     res.text.clear();
     res.error.clear();
     stop_requested = false;
     set_partial_text("");
     if (!ensure_model(req, res.error)) return false;
 
-    toks = tokenize(&base, req.prefix.c_str(), true, false);
+    string prompt;
+    if (!req.system_prompt.empty()) prompt = req.system_prompt + "\n\n";
+    prompt += req.prefix;
+    vector<int> toks = tokenize(&base, prompt.c_str(), true, false);
     if (req.cache_prompt && cache_valid) {
+        int shared = 0;
         while (shared < (int)toks.size() && shared < (int)cached_toks.size() && toks[shared] == cached_toks[shared]) shared++;
         state = cached;
         state.pos = shared;
@@ -55,6 +55,7 @@ bool emb_ai::complete(const ai_request &req, ai_result &res)
     state.temp = req.temperature;
     state.greedy = req.temperature <= 0.0;
 
+    int ntoks = 0;
     while (ntoks < req.maxtoks) {
         if (stop_requested) {
             res.error = "Embedded AI stopped";

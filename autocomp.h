@@ -7,7 +7,6 @@
 #include "emb_ai.h"
 #include "llama_client.h"
 
-#define AUTOCOMPLETE_DELAY_SEC 0.18
 #define AUTOCOMPLETE_POLL_SEC 0.05
 #define MKV_MAX_OPTS 24
 #define MKV_MAX_BEAM 48
@@ -32,9 +31,9 @@ struct autocomp
     virtual void trigger_now();
     virtual void cancel_pending();
     virtual bool is_busy() const { return false; }
-    virtual bool move_suggestion(int) { return false; }
+    virtual bool move_suggestion(int dir);
     virtual void reset_state() {}
-    virtual bool complete(std::string &text, int &anchor_pos) = 0;
+    virtual bool complete(std::string &text, int &anchor_pos) { return false; }
 
     bool can_complete() const;
     bool current_word(std::string &prefix, int &anchor_pos) const;
@@ -48,14 +47,12 @@ struct autocomp_dict : autocomp
     std::vector<std::string> words;
 
     void on_preferences_changed();
-    bool move_suggestion(int dir);
     bool complete(std::string &text, int &anchor_pos);
 };
 
 struct autocomp_file : autocomp
 {
     bool complete(std::string &text, int &anchor_pos);
-    bool move_suggestion(int dir);
 };
 
 struct autocomp_ai : autocomp
@@ -153,20 +150,22 @@ struct mkv_path
     std::string text;
 };
 
+struct mkv_node
+{
+    std::string tok;
+    int freq = 0, start_cnt = 0, out_cnt = 0;
+    std::vector<mkv_edge> edges;
+};
+
 struct autocomp_markov : autocomp
 {
-    std::vector<std::string> toks;
-    std::vector<int> freq; // TODO: these three are used in conjunction - better to re-use an existing struct to store
-    std::vector<int> start_cnt;
-    std::vector<int> out_cnt;
-    std::vector<std::vector<mkv_edge> > edges;
+    std::vector<mkv_node> nodes;
     std::map<std::string, int> tok_id;
     bool dirty = true;
 
     void on_preferences_changed();
     void on_text_changed(int pos, int inserted, int deleted, const char* deleted_text);
     bool complete(std::string &text, int &anchor_pos);
-    bool move_suggestion(int dir);
     void reset_state();
     void rebuild();
 };

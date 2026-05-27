@@ -21,7 +21,7 @@ sudo cp -av "$APP.png" "$SHARED/"
 
 [ "z$1" = "zupdate" ] && exit 0
 
-if [ ! -d "APPSTORE" ]; then
+if [ ! -d "$APPSTORE" ]; then
     mkdir -p "$APPSTORE"
 fi
 

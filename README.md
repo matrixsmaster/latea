@@ -21,26 +21,22 @@ That last part is the feature. The only feature.
 ## What it does
 
 - Open, edit, and save plain text files
-- Find, replace, and replace all
+- Find/replace
+- Tab handling and auto-indent
 - Show inline autocomplete suggestions in several modes:
-  - disabled
   - dictionary file
   - current file
   - AI connector
   - embedded AI engine
   - Markov model
 - Keep multiple autocomplete candidates and let you move through them back and forth
-- Generate Markov autocomplete suggestions from the current document itself
 - Accept suggestions inline while staying in the normal editing flow
-- Run AI autocomplete through either a local `llama.cpp`-style server or the in-process embedded inference engine
 - Launch and manage a local `llama.cpp` server automatically if configured
-- Show embedded AI generation progress and approximate token/context usage (for embedded AI engine)
 - Has prompt caching for embedded inference where possible
 - Customize font, colors, and other editor appearance settings
 - Save named preference presets for different editing and AI setups
 - Optionally create `.bak` backups before overwriting existing loaded files
-- Provide desktop installation
-- Stay small, local, and boring in the best possible way
+- Open built-in offline help
 
 ## Autocomplete
 
@@ -135,13 +131,19 @@ The intent is that autocomplete feels like part of typing, not a separate dialog
 
 Latea supports named preference presets. Instead of one sacred global configuration carved into stone, you can keep multiple setups and quickly switch between them.
 
+## Offline help
+
+Latea includes built-in offline help, because apparently reading the manual should not require a working internet connection, a browser tab, three trackers, and a cookie banner asking whether documentation may improve your experience.
+
+This is especially handy on minimal installs, air-gapped machines, laptops in trains, or any system where "go online to learn how to use the offline editor" feels like a philosophical crime.
+
 ## Saving files
 
 Saving files is still meant to be boring. Boring is good. Boring means your text survives.
 
-If `Save backup` is enabled, saving an existing loaded file first writes the previously loaded or saved contents to `<filename>.bak`. The old known-good version gets a tiny cardboard helmet before the new one marches in.
+If `Save backup` is enabled, saving an existing file first renames the old file already present on disk to `<filename>.bak`, then writes the current editor text as the new file.
 
-After a successful save, Latea remembers the newly saved contents as the backup baseline for the next save.
+If creating the backup fails, Latea blocks the save instead of gambling with your text. That is less dramatic than data loss, which is the point.
 
 ## Build
 

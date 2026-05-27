@@ -8,22 +8,17 @@
 
 using namespace std;
 
-string trim_newlines(const string &s)
+string trim_newlines(string s)
 {
-    string out = s;
-    while (!out.empty() && (out[out.size() - 1] == '\n' || out[out.size() - 1] == '\r')) {
-        out.erase(out.size() - 1, 1);
-    }
-    return out;
+    while (!s.empty() && (s[s.size() - 1] == '\n' || s[s.size() - 1] == '\r')) s.erase(s.size() - 1, 1);
+    return s;
 }
 
-string lowercase(const string &s)
+string lowercase(string s)
 {
-    string out = s;
-    for (size_t i = 0; i < out.size(); i++) {
-        out[i] = (char)tolower((unsigned char)out[i]);
-    }
-    return out;
+    for (size_t i = 0; i < s.size(); i++)
+        s[i] = (char)tolower((unsigned char)s[i]);
+    return s;
 }
 
 bool is_word_char(char c)

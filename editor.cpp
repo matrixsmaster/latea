@@ -12,6 +12,8 @@
 #include "font_dialog.h"
 #include "prefs_dlg.h"
 #include "latea_ui.h"
+#include "manual.h"
+#include "icon.h"
 
 using namespace std;
 
@@ -44,7 +46,6 @@ latea_editor::latea_editor(int x, int y, int w, int h, const char* label)
 
 void latea_editor::draw()
 {
-    int x = 0, y = 0;
     int need_lines;
     int box_h;
     int first_w;
@@ -54,12 +55,12 @@ void latea_editor::draw()
     vector<string> lines;
     vector<int> line_x;
     vector<int> line_w;
-    Fl_Color bg;
-    Fl_Color fg;
 
     Fl_Text_Editor::draw();
     if (!g_wnd || !g_wnd->suggest.visible) return;
     if (insert_position() != g_wnd->suggest.anchor_pos) return;
+    int x = 0;
+    int y = 0;
     if (!position_to_xy(g_wnd->suggest.anchor_pos, &x, &y)) return;
 
     fl_font(textfont(), textsize());
@@ -116,8 +117,8 @@ void latea_editor::draw()
     }
     scrolled = 0;
 
-    bg = fl_rgb_color(RGB_R(g_wnd->prefs.bg_color), RGB_G(g_wnd->prefs.bg_color), RGB_B(g_wnd->prefs.bg_color));
-    fg = fl_rgb_color(RGB_R(g_wnd->prefs.ghost_color), RGB_G(g_wnd->prefs.ghost_color), RGB_B(g_wnd->prefs.ghost_color));
+    Fl_Color bg = fl_rgb_color(RGB_R(g_wnd->prefs.bg_color), RGB_G(g_wnd->prefs.bg_color), RGB_B(g_wnd->prefs.bg_color));
+    Fl_Color fg = fl_rgb_color(RGB_R(g_wnd->prefs.ghost_color), RGB_G(g_wnd->prefs.ghost_color), RGB_B(g_wnd->prefs.ghost_color));
 
     fl_push_clip(this->x(), this->y(), this->w(), this->h());
     for (i = 0; i < (int)lines.size(); i++) {
@@ -131,36 +132,79 @@ void latea_editor::draw()
 
 int latea_editor::handle(int event)
 {
-    int old_pos = insert_position();
+    int pos = insert_position();
+    int ls = line_start(pos);
     int old_rev = g_wnd->text_rev;
 
     if (event == FL_KEYDOWN) {
         int key = Fl::event_key();
-        if (key == FL_Right && g_wnd->suggest.visible && !Fl::event_ctrl()) {
-            g_wnd->accept_suggestion_full();
-            return 1;
-        }
-        if (key == FL_Right && g_wnd->suggest.visible && Fl::event_ctrl()) {
-            g_wnd->accept_suggestion_word();
-            return 1;
-        }
-        if (key == FL_Down && g_wnd->suggest.visible) {
-            g_wnd->next_suggestion();
-            return 1;
-        }
-        if (key == FL_Up && g_wnd->suggest.visible) {
-            g_wnd->prev_suggestion();
-            return 1;
+        int st = Fl::event_state();
+        if (g_wnd->suggest.visible) {
+            switch (key) {
+            case FL_Right:
+                if (!Fl::event_ctrl()) g_wnd->accept_suggestion_full();
+                else g_wnd->accept_suggestion_word();
+                return 1;
+            case FL_Down:
+                g_wnd->next_suggestion();
+                return 1;
+            case FL_Up:
+                g_wnd->prev_suggestion();
+                return 1;
+            }
         }
         if (key == FL_Escape && (g_wnd->suggest.visible || g_wnd->cmpt->is_busy())) {
             g_wnd->cmpt->cancel_pending();
             g_wnd->clear_suggestion();
             return 1;
         }
+        if (!(st & (FL_CTRL | FL_ALT | FL_META))) {
+            switch (key) {
+            case FL_BackSpace:
+                if (g_wnd->prefs.auto_indent && g_wnd->prefs.tab_spaces > 0 && pos) {
+                    int sel_s, sel_e;
+                    if (!g_wnd->textbuf->selection_position(&sel_s, &sel_e)) {
+                        bool flg = false;
+                        for (int i = ls; !flg && i < pos; i++) flg = (g_wnd->textbuf->byte_at(i) != ' ');
+                        if (flg) break;
+                        int rem = MIN(g_wnd->prefs.tab_spaces, pos - ls);
+                        if (!rem) break;
+                        g_wnd->textbuf->remove(pos - rem, pos);
+                        insert_position(pos - rem);
+                        show_insert_position();
+                        return 1;
+                    }
+                }
+                break;
+            case FL_Tab:
+                if (g_wnd->prefs.tab_spaces > 0) {
+                    string ins((size_t)g_wnd->prefs.tab_spaces, ' ');
+                    insert(ins.c_str());
+                    show_insert_position();
+                    return 1;
+                }
+                break;
+            case FL_Enter:
+            case FL_KP_Enter:
+                if (g_wnd->prefs.auto_indent) {
+                    string ins = "\n";
+                    while (ls < pos) {
+                        char c = g_wnd->textbuf->byte_at(ls);
+                        if (c != ' ' && c != '\t') break;
+                        ins += c;
+                        ls++;
+                    }
+                    insert(ins.c_str());
+                    show_insert_position();
+                    return 1;
+                }
+                break;
+            }
+        }
     }
 
     int rc = Fl_Text_Editor::handle(event);
-    if (old_pos != insert_position()) {
+    if (pos != insert_position()) {
         g_wnd->update_caret_pos();
         if (old_rev == g_wnd->text_rev) g_wnd->cmpt->on_cursor_changed();
     }
@@ -182,7 +226,7 @@ latea::latea()
     ui = new LateaUI;
     editor = ui->editor;
     textbuf = new Fl_Text_Buffer;
-    cmpt = &cmpt_dict;
+    cmpt = &cmpt_none;
     changed = false;
     suppress_history = 0;
     suppress_autocomp = 0;
@@ -205,11 +249,10 @@ latea::latea()
     g_font_dlg = new font_dialog;
     g_prefs_dlg = new prefs_dialog;
 
-    app_icon = new Fl_PNG_Image(APP_ICON_FILE);
+    unsigned char icon_data[] = LATEA_ICON;
+    app_icon = new Fl_PNG_Image("latea.png", icon_data, NUMITEMS(icon_data));
     if (app_icon->w() > 0 && app_icon->h() > 0) {
         Fl_Window::default_icon(app_icon);
-        //Fl_Double_Window* wins[] = EDITOR_WINDOWS;
-        //for (size_t i = 0; i < NUMITEMS(wins); i++) wins[i]->icon(app_icon);
         about_img = app_icon->copy(ui->about_icon->w(),ui->about_icon->h());
         ui->about_icon->image(about_img);
     }
@@ -219,6 +262,11 @@ latea::latea()
 
     textbuf->canUndo(0);
     textbuf->add_modify_callback(text_modified_cb, this);
+
+    Fl_Text_Buffer* helptxt = new Fl_Text_Buffer;
+    helptxt->text(LATEA_HELP_MESSAGE);
+    ui->help_output->buffer(helptxt);
+    ui->help_output->textfont(FL_COURIER);
 
     g_prefs_dlg->prefs = prefs;
     g_prefs_dlg->sync_ui();
@@ -235,7 +283,6 @@ void latea::new_document()
     textbuf->text("");
     suppress_history--;
     filename.clear();
-    file_text.clear();
     reset_loaded_document_state("New document");
 }
 
@@ -261,9 +308,6 @@ bool latea::open_file(const char* path)
     }
 
     filename = path;
-    char* text = textbuf->text();
-    file_text = text ? text : "";
-    free(text);
     reset_loaded_document_state("File opened");
     return true;
 }
@@ -272,16 +316,13 @@ bool latea::save_file()
 {
     if (filename.empty()) return save_file_as();
 
-    if (prefs.save_backup && !file_text.empty()) {
+    if (prefs.save_backup && !access(filename.c_str(), F_OK)) {
         string bak_path = filename + ".bak";
-        FILE* bak = fopen(bak_path.c_str(), "wb");
-        if (!bak) {
+        if (rename(filename.c_str(), bak_path.c_str())) {
             fl_alert("Cannot save backup '%s': %s", bak_path.c_str(), strerror(errno));
             update_status("Backup failed");
             return false;
         }
-        fwrite(file_text.data(), file_text.size(), 1, bak);
-        fclose(bak);
     }
 
     int rc = textbuf->savefile(filename.c_str());
@@ -291,9 +332,6 @@ bool latea::save_file()
         return false;
     }
 
-    char* text = textbuf->text();
-    file_text = text ? text : "";
-    free(text);
     set_changed(false);
     update_status("File saved");
     return true;
@@ -534,6 +572,7 @@ void latea::apply_view_preferences()
 
     set_word_wrap(prefs.word_wrap);
     set_line_numbers(prefs.line_numbers);
+    prefs.auto_indent ? ui->auto_indent_item->set() : ui->auto_indent_item->clear();
     editor->damage(FL_DAMAGE_ALL);
     editor->redisplay_range(0, textbuf->length());
     editor->redraw();
@@ -579,7 +618,7 @@ void latea::select_autocomp()
         cmpt = &cmpt_mkv;
         break;
     default:
-        cmpt = &cmpt_dict;
+        cmpt = &cmpt_none;
         break;
     }
     if (prefs.autocomp_mode != AUTOCOMPLETE_EMBEDDED_AI) update_ai_usage(0, 0);
@@ -742,12 +781,12 @@ void latea::clear_suggestion()
 
 void latea::prev_suggestion()
 {
-    if (cmpt) cmpt->move_suggestion(-1);
+    cmpt->move_suggestion(-1);
 }
 
 void latea::next_suggestion()
 {
-    if (cmpt) cmpt->move_suggestion(1);
+    cmpt->move_suggestion(1);
 }
 
 void latea::accept_suggestion_full()
@@ -765,25 +804,19 @@ void latea::accept_suggestion_full()
 
 void latea::accept_suggestion_word()
 {
-    size_t start;
-    size_t stop;
-    string part;
-    string rest;
-    int pos;
-
     if (!suggest.visible) return;
-    start = 0;
+    size_t start = 0;
     while (start < suggest.text.size() && (suggest.text[start] == ' ' || suggest.text[start] == '\t')) start++;
-    stop = start;
+    size_t stop = start;
     while (stop < suggest.text.size() && is_word_char(suggest.text[stop])) stop++;
     if (stop <= start) {
         stop = 0;
         while (stop < suggest.text.size() && (suggest.text[stop] == ' ' || suggest.text[stop] == '\t')) stop++;
         if (stop < suggest.text.size()) stop++;
     }
-    part = suggest.text.substr(0, stop);
-    rest = suggest.text.substr(stop);
-    pos = editor->insert_position();
+    string part = suggest.text.substr(0, stop);
+    string rest = suggest.text.substr(stop);
+    int pos = editor->insert_position();
     cmpt->cancel_pending();
     if (part.empty()) return;
     suggest.clear();
@@ -849,11 +882,13 @@ void latea::update_ai_usage(int used, int ctx)
 
 void latea::refresh_ai_status()
 {
-    char buf[256];
-
-    if (ai_used_ctx > 0) snprintf(buf, sizeof(buf), "%s %d/%d", ai_status_text.c_str(), ai_used_toks, ai_used_ctx);
-    else snprintf(buf, sizeof(buf), "%s", ai_status_text.c_str());
-    ui->ai_status_box->copy_label(buf);
+    string txt = ai_status_text;
+    if (ai_used_ctx > 0) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%d/%d", ai_used_toks, ai_used_ctx);
+        txt += buf;
+    }
+    ui->ai_status_box->copy_label(txt.c_str());
     ui->ai_status_box->redraw();
 }
 

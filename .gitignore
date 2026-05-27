@@ -1,5 +1,10 @@
 *.o
-latea
-latea_ui.*
 *.conf
 *.cfg
+latea_ui.*
+manual.h
+icon.h
+a.out
+latea
+build/
+*.AppImage

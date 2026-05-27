@@ -25,16 +25,18 @@ void app_prefs::set_defaults()
     ghost_color = RGB_U32(99, 99, 99);
     bg_color = RGB_U32(255, 255, 255);
     sel_color = RGB_U32(184, 208, 255);
+    auto_indent = false;
+    tab_spaces = 0;
     word_wrap = false;
     line_numbers = false;
+    ac_delay_ms = 180;
     ai_launch_path.clear();
     ai_host = "127.0.0.1";
     ai_port = 8080;
-    ai_endpoint_mode = AI_ENDPOINT_COMPLETION;
+    ai_infill = false;
     ai_system_prompt.clear();
     ai_prefix_chars = 3000;
     ai_suffix_chars = 800;
-    ai_delay_ms = 180;
     ai_timeout_ms = 10000;
     ai_context_length = 4096;
     ai_temperature = 0.2;
@@ -58,7 +60,6 @@ void app_prefs::load_item(string key, string val)
 {
     if (key == "win_w") win_w = atoi(val.c_str());
     else if (key == "win_h") win_h = atoi(val.c_str());
-    else if (key == "last_preset") last_preset = json_unescape(val);
     else if (key == "dict_path") dict_path = json_unescape(val);
     else if (key == "autocomp_mode") autocomp_mode = atoi(val.c_str());
     else if (key == "cont_autocomp") cont_autocomp = atoi(val.c_str()) != 0;
@@ -70,16 +71,18 @@ void app_prefs::load_item(string key, string val)
     else if (key == "ghost_color") ghost_color = strtoul(val.c_str(), NULL, 0);
     else if (key == "bg_color") bg_color = strtoul(val.c_str(), NULL, 0);
     else if (key == "sel_color") sel_color = strtoul(val.c_str(), NULL, 0);
+    else if (key == "auto_indent") auto_indent = atoi(val.c_str()) != 0;
+    else if (key == "tab_spaces") tab_spaces = atoi(val.c_str());
     else if (key == "word_wrap") word_wrap = atoi(val.c_str()) != 0;
     else if (key == "line_numbers") line_numbers = atoi(val.c_str()) != 0;
+    else if (key == "ac_delay_ms") ac_delay_ms = atoi(val.c_str());
     else if (key == "ai_launch_path") ai_launch_path = json_unescape(val);
     else if (key == "ai_host") ai_host = json_unescape(val);
     else if (key == "ai_port") ai_port = atoi(val.c_str());
-    else if (key == "ai_endpoint_mode") ai_endpoint_mode = atoi(val.c_str());
+    else if (key == "ai_infill") ai_infill = atoi(val.c_str()) != 0;
     else if (key == "ai_system_prompt") ai_system_prompt = json_unescape(val);
     else if (key == "ai_prefix_chars") ai_prefix_chars = atoi(val.c_str());
     else if (key == "ai_suffix_chars") ai_suffix_chars = atoi(val.c_str());
-    else if (key == "ai_delay_ms") ai_delay_ms = atoi(val.c_str());
     else if (key == "ai_timeout_ms") ai_timeout_ms = atoi(val.c_str());
     else if (key == "ai_context_length") ai_context_length = atoi(val.c_str());
     else if (key == "ai_temperature") ai_temperature = atof(val.c_str());
@@ -98,7 +101,6 @@ string app_prefs::save_all() const
 
     out << "win_w=" << win_w << "\n";
     out << "win_h=" << win_h << "\n";
-    out << "last_preset=" << json_escape(last_preset) << "\n";
     out << "dict_path=" << json_escape(dict_path) << "\n";
     out << "autocomp_mode=" << autocomp_mode << "\n";
     out << "cont_autocomp=" << cont_autocomp << "\n";
@@ -110,16 +112,18 @@ string app_prefs::save_all() const
     out << "ghost_color=0x" << hex << ghost_color << dec << "\n";
     out << "bg_color=0x" << hex << bg_color << dec << "\n";
     out << "sel_color=0x" << hex << sel_color << dec << "\n";
+    out << "auto_indent=" << auto_indent << "\n";
+    out << "tab_spaces=" << tab_spaces << "\n";
     out << "word_wrap=" << word_wrap << "\n";
     out << "line_numbers=" << line_numbers << "\n";
+    out << "ac_delay_ms=" << ac_delay_ms << "\n";
     out << "ai_launch_path=" << json_escape(ai_launch_path) << "\n";
     out << "ai_host=" << json_escape(ai_host) << "\n";
     out << "ai_port=" << ai_port << "\n";
-    out << "ai_endpoint_mode=" << ai_endpoint_mode << "\n";
+    out << "ai_infill=" << ai_infill << "\n";
     out << "ai_system_prompt=" << json_escape(ai_system_prompt) << "\n";
     out << "ai_prefix_chars=" << ai_prefix_chars << "\n";
     out << "ai_suffix_chars=" << ai_suffix_chars << "\n";
-    out << "ai_delay_ms=" << ai_delay_ms << "\n";
     out << "ai_timeout_ms=" << ai_timeout_ms << "\n";
     out << "ai_context_length=" << ai_context_length << "\n";
     out << "ai_temperature=" << ai_temperature << "\n";
@@ -133,12 +137,12 @@ string app_prefs::save_all() const
     return out.str();
 }
 
-void app_prefs::store_preset(const string &name)
+void app_prefs::store_preset(string name)
 {
     sets[name] = save_all();
 }
 
-void app_prefs::use_preset(const string &name)
+void app_prefs::use_preset(string name)
 {
     map<string, string>::iterator it = sets.find(name);
     if (it == sets.end()) return;
@@ -151,9 +155,10 @@ void app_prefs::use_preset(const string &name)
         if (p == string::npos) continue;
         load_item(line.substr(0, p), line.substr(p + 1));
     }
+    last_preset = name;
 }
 
-void app_prefs::del_preset(const string &name)
+void app_prefs::del_preset(string name)
 {
     if (name == PREFS_MAIN) return;
     sets.erase(name);
@@ -168,49 +173,35 @@ void app_prefs::load()
     string dir = config_dir();
     string path = dir + "/" + CONFIG_FILE;
     ifstream file(path.c_str());
-    if (!file.is_open()) {
+
+    string first;
+    if (file.is_open()) {
+        string sect, body, line;
+        while (getline(file, line)) {
+            if (line.size() >= 3 && line[0] == '[' && line[line.size() - 1] == ']') {
+                if (!sect.empty()) sets[sect] = body;
+                sect = line.substr(1, line.size() - 2);
+                if (first.empty()) first = sect;
+                body.clear();
+                continue;
+            }
+            if (sect.empty()) continue;
+            body += line + "\n";
+        }
+        if (!sect.empty() && !body.empty()) sets[sect] = body;
+    }
+
+    if (sets.find(PREFS_MAIN) == sets.end()) {
+        last_preset = PREFS_MAIN;
         store_preset(PREFS_MAIN);
-        sets[PREFS_GLOBAL] = sets[PREFS_MAIN];
-        use_preset(PREFS_MAIN);
         return;
     }
 
-    string sect;
-    string body;
-    string line;
-    while (getline(file, line)) {
-        if (line.size() >= 3 && line[0] == '[' && line[line.size() - 1] == ']') {
-            if (!sect.empty()) sets[sect] = body;
-            sect = line.substr(1, line.size() - 2);
-            body.clear();
-            continue;
-        }
-        if (sect.empty()) continue;
-        body += line;
-        body += "\n";
-    }
-    if (!sect.empty()) sets[sect] = body;
-
-    if (sets.find(PREFS_MAIN) == sets.end()) {
-        set_defaults();
-        store_preset(PREFS_MAIN);
-    }
-    if (sets.find(PREFS_GLOBAL) == sets.end()) sets[PREFS_GLOBAL] = sets[PREFS_MAIN];
-
-    use_preset(PREFS_GLOBAL);
-    if (sets.find(last_preset) == sets.end()) last_preset = PREFS_MAIN;
-
-    string use = last_preset;
-    int ww = win_w;
-    int wh = win_h;
-    string last = last_preset;
-    use_preset(use);
-    win_w = ww;
-    win_h = wh;
-    last_preset = last;
+    if (!first.empty()) use_preset(first);
+    else use_preset(PREFS_MAIN);
 }
 
-void app_prefs::save() const
+void app_prefs::save()
 {
     string dir = config_dir();
     mkdir(dir.c_str(), CONFIG_MODE);
@@ -221,11 +212,10 @@ void app_prefs::save() const
 
     map<string, string> tmp = sets;
     tmp[last_preset] = save_all();
-    tmp[PREFS_GLOBAL] = save_all();
 
-    file << "[" << PREFS_GLOBAL << "]\n" << tmp[PREFS_GLOBAL];
+    file << "[" << last_preset << "]\n" << tmp[last_preset];
     for (map<string, string>::const_iterator it = tmp.begin(); it != tmp.end(); ++it) {
-        if (it->first == PREFS_GLOBAL) continue;
+        if (it->first == last_preset) continue;
         file << "[" << it->first << "]\n" << it->second;
     }
 }

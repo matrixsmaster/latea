@@ -13,10 +13,8 @@ prefs_dialog* g_prefs_dlg = NULL;
 static void refill_presets()
 {
     g_wnd->ui->prefs_preset->clear();
-    for (map<string, string>::const_iterator it = g_prefs_dlg->prefs.sets.begin(); it != g_prefs_dlg->prefs.sets.end(); ++it) {
-        if (it->first == PREFS_GLOBAL) continue;
+    for (map<string, string>::const_iterator it = g_prefs_dlg->prefs.sets.begin(); it != g_prefs_dlg->prefs.sets.end(); ++it)
         g_wnd->ui->prefs_preset->add(it->first.c_str());
-    }
 }
 
 void prefs_dialog::sync_ui()
@@ -49,13 +47,13 @@ void prefs_dialog::sync_ui()
     snprintf(buf, sizeof(buf), "%d", p.max_suggestion);
     g_wnd->ui->max_suggest_input->value(buf);
     g_wnd->ui->model_path_input->value(p.model_path.c_str());
+    snprintf(buf, sizeof(buf), "%d", p.ac_delay_ms);
+    g_wnd->ui->ac_delay_input->value(buf);
     g_wnd->ui->llama_path_input->value(p.ai_launch_path.c_str());
     g_wnd->ui->ai_host_input->value(p.ai_host.c_str());
     snprintf(buf, sizeof(buf), "%d", p.ai_port);
     g_wnd->ui->ai_port_input->value(buf);
-    g_wnd->ui->endpoint_mode_choice->value(p.ai_endpoint_mode);
-    snprintf(buf, sizeof(buf), "%d", p.ai_delay_ms);
-    g_wnd->ui->ai_delay_input->value(buf);
+    g_wnd->ui->endpoint_mode_choice->value(p.ai_infill ? 1 : 0);
     snprintf(buf, sizeof(buf), "%d", p.ai_timeout_ms);
     g_wnd->ui->ai_timeout_input->value(buf);
     snprintf(buf, sizeof(buf), "%d", p.ai_context_length);
@@ -75,9 +73,12 @@ void prefs_dialog::sync_ui()
     g_wnd->ui->ai_cache_check->value(p.ai_cache_prompt ? 1 : 0);
     g_wnd->ui->ai_tq_check->value(p.ai_tq ? 1 : 0);
     g_wnd->ui->system_prompt_input->value(p.ai_system_prompt.c_str());
+    snprintf(buf, sizeof(buf), "%d", p.tab_spaces);
+    g_wnd->ui->tab_spaces_input->value(buf);
     g_wnd->ui->save_backup_check->value(p.save_backup ? 1 : 0);
     g_wnd->ui->stop_punct_check->value(p.stop_punct ? 1 : 0);
 
+    p.auto_indent ? g_wnd->ui->auto_indent_item->set() : g_wnd->ui->auto_indent_item->clear();
     p.cont_autocomp ? g_wnd->ui->autocmp_cont->set() : g_wnd->ui->autocmp_cont->clear();
     p.word_wrap ? g_wnd->ui->view_wrdwrp->set() : g_wnd->ui->view_wrdwrp->clear();
     p.line_numbers ? g_wnd->ui->view_lines->set() : g_wnd->ui->view_lines->clear();
@@ -89,11 +90,11 @@ void prefs_dialog::sync_from_ui()
     prefs.dict_path = g_wnd->ui->dictionary_path_input->value();
     prefs.max_suggestion = atoi(g_wnd->ui->max_suggest_input->value());
     prefs.model_path = g_wnd->ui->model_path_input->value();
+    prefs.ac_delay_ms = atoi(g_wnd->ui->ac_delay_input->value());
     prefs.ai_launch_path = g_wnd->ui->llama_path_input->value();
     prefs.ai_host = g_wnd->ui->ai_host_input->value();
     prefs.ai_port = atoi(g_wnd->ui->ai_port_input->value());
-    prefs.ai_endpoint_mode = g_wnd->ui->endpoint_mode_choice->value();
-    prefs.ai_delay_ms = atoi(g_wnd->ui->ai_delay_input->value());
+    prefs.ai_infill = g_wnd->ui->endpoint_mode_choice->value() != 0;
     prefs.ai_timeout_ms = atoi(g_wnd->ui->ai_timeout_input->value());
     prefs.ai_context_length = atoi(g_wnd->ui->ai_context_input->value());
     prefs.ai_temperature = atof(g_wnd->ui->ai_temperature_input->value());
@@ -105,6 +106,8 @@ void prefs_dialog::sync_from_ui()
     prefs.ai_cache_prompt = g_wnd->ui->ai_cache_check->value() != 0;
     prefs.ai_tq = g_wnd->ui->ai_tq_check->value() != 0;
     prefs.ai_system_prompt = g_wnd->ui->system_prompt_input->value();
+    prefs.tab_spaces = atoi(g_wnd->ui->tab_spaces_input->value());
+    if (prefs.tab_spaces < 0) prefs.tab_spaces = 0;
     prefs.save_backup = g_wnd->ui->save_backup_check->value() != 0;
     prefs.stop_punct = g_wnd->ui->stop_punct_check->value() != 0;
 }
@@ -153,10 +156,6 @@ void prefs_dialog::new_preset()
     prefs.store_preset(prefs.last_preset);
     const char* name = fl_input("Preset name:", "");
     if (!name || !name[0]) return;
-    if (!strcmp(name, PREFS_GLOBAL)) {
-        fl_alert("Preset name '%s' is reserved.", name);
-        return;
-    }
     if (prefs.sets.find(name) != prefs.sets.end()) {
         fl_alert("Preset '%s' already exists.", name);
         return;

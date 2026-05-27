@@ -10,7 +10,6 @@
 #define CONFIG_MODE 0775
 #define DEF_TEXT_FONT FL_COURIER
 #define DEF_TEXT_SIZE 16
-#define PREFS_GLOBAL "_Global_"
 #define PREFS_MAIN "Latea"
 
 enum {
@@ -19,12 +18,7 @@ enum {
     AUTOCOMPLETE_CURRENT_FILE = 2,
     AUTOCOMPLETE_AI = 3,
     AUTOCOMPLETE_EMBEDDED_AI = 4,
-    AUTOCOMPLETE_MARKOV = 5
-};
-
-enum {
-    AI_ENDPOINT_COMPLETION = 0,
-    AI_ENDPOINT_PREFER_INFILL = 1
+    AUTOCOMPLETE_MARKOV = 5,
 };
 
 struct app_prefs
@@ -42,16 +36,18 @@ struct app_prefs
     uint32_t ghost_color;
     uint32_t bg_color;
     uint32_t sel_color;
+    bool auto_indent;
+    int tab_spaces;
     bool word_wrap;
     bool line_numbers;
+    int ac_delay_ms;
     std::string ai_launch_path;
     std::string ai_host;
     int ai_port;
-    int ai_endpoint_mode;
+    bool ai_infill;
     std::string ai_system_prompt;
     int ai_prefix_chars;
     int ai_suffix_chars;
-    int ai_delay_ms;
     int ai_timeout_ms;
     int ai_context_length;
     double ai_temperature;
@@ -67,10 +63,10 @@ struct app_prefs
 
     void set_defaults();
     void load();
-    void save() const;
+    void save();
     void load_item(std::string key, std::string val);
     std::string save_all() const;
-    void use_preset(const std::string &name);
-    void store_preset(const std::string &name);
-    void del_preset(const std::string &name);
+    void use_preset(std::string name);
+    void store_preset(std::string name);
+    void del_preset(std::string name);
 };
